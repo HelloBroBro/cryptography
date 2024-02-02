@@ -9,6 +9,7 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use asn1::ObjectIdentifier;
+use cryptography_key_parsing::rsa::Pksc1RsaPublicKey;
 use cryptography_x509::certificate::Certificate;
 use cryptography_x509::common::{
     AlgorithmIdentifier, AlgorithmParameters, EcParameters, RsaPssParameters, Time,
@@ -26,6 +27,9 @@ use crate::ops::CryptoOps;
 use crate::policy::extension::{ca, common, ee, Criticality, ExtensionPolicy, ExtensionValidator};
 use crate::types::{DNSName, DNSPattern, IPAddress};
 use crate::{ValidationError, VerificationCertificate};
+
+// RSA key constraints, as defined in CA/B 6.1.5.
+static WEBPKI_MINIMUM_RSA_MODULUS: usize = 2048;
 
 // SubjectPublicKeyInfo AlgorithmIdentifier constants, as defined in CA/B 7.1.3.1.
 
@@ -213,6 +217,10 @@ pub struct Policy<'a, B: CryptoOps> {
     /// An extended key usage that must appear in EEs validated by this policy.
     pub extended_key_usage: ObjectIdentifier,
 
+    /// The minimum RSA modulus, in bits.
+    /// This is equivalent to the public key size, e.g. 2048 for an RSA-2048 key.
+    pub minimum_rsa_modulus: usize,
+
     /// The set of permitted public key algorithms, identified by their
     /// algorithm identifiers.
     pub permitted_public_key_algorithms: Arc<HashSet<AlgorithmIdentifier<'a>>>,
@@ -240,6 +248,7 @@ impl<'a, B: CryptoOps> Policy<'a, B> {
             subject,
             validation_time: time,
             extended_key_usage: EKU_SERVER_AUTH_OID.clone(),
+            minimum_rsa_modulus: WEBPKI_MINIMUM_RSA_MODULUS,
             permitted_public_key_algorithms: Arc::clone(&*WEBPKI_PERMITTED_SPKI_ALGORITHMS),
             permitted_signature_algorithms: Arc::clone(&*WEBPKI_PERMITTED_SIGNATURE_ALGORITHMS),
             ca_extension_policy: ExtensionPolicy {
@@ -350,8 +359,8 @@ impl<'a, B: CryptoOps> Policy<'a, B> {
         // Per 5280: The serial number MUST be a positive integer.
         // In practice, there are a few roots in common trust stores (like certifi)
         // that have `serial == 0`, so we can't enforce this yet.
-        let serial_bytes = cert.tbs_cert.serial.as_bytes();
-        if !(1..=21).contains(&serial_bytes.len()) {
+        let serial = cert.tbs_cert.serial;
+        if !(1..=21).contains(&serial.as_bytes().len()) {
             // Conforming CAs MUST NOT use serial numbers longer than 20 octets.
             // NOTE: In practice, this requires us to check for an encoding of
             // 21 octets, since some CAs generate 20 bytes of randomness and
@@ -360,8 +369,7 @@ impl<'a, B: CryptoOps> Policy<'a, B> {
             return Err(ValidationError::Other(
                 "certificate must have a serial between 1 and 20 octets".to_string(),
             ));
-        } else if serial_bytes[0] & 0x80 == 0x80 {
-            // TODO: replace with `is_negative`: https://github.com/alex/rust-asn1/pull/425
+        } else if serial.is_negative() {
             return Err(ValidationError::Other(
                 "certificate serial number cannot be negative".to_string(),
             ));
@@ -468,9 +476,11 @@ impl<'a, B: CryptoOps> Policy<'a, B> {
         self.permits_ca(issuer.certificate(), current_depth, issuer_extensions)?;
 
         // CA/B 7.1.3.1 SubjectPublicKeyInfo
+        // NOTE: We check the issuer's SPKI here, since the issuer is
+        // definitionally a CA and thus subject to CABF key requirements.
         if !self
             .permitted_public_key_algorithms
-            .contains(&child.tbs_cert.spki.algorithm)
+            .contains(&issuer.certificate().tbs_cert.spki.algorithm)
         {
             return Err(ValidationError::Other(format!(
                 "Forbidden public key algorithm: {:?}",
@@ -479,6 +489,11 @@ impl<'a, B: CryptoOps> Policy<'a, B> {
         }
 
         // CA/B 7.1.3.2 Signature AlgorithmIdentifier
+        // NOTE: We check the child's signature here, since the issuer's
+        // signature is not necessarily subject to signature checks (e.g.
+        // if it's a root). This works out transitively, as any non root-issuer
+        // will be checked in its recursive step (where it'll be in the child
+        // position).
         if !self
             .permitted_signature_algorithms
             .contains(&child.signature_alg)
@@ -487,6 +502,22 @@ impl<'a, B: CryptoOps> Policy<'a, B> {
                 "Forbidden signature algorithm: {:?}",
                 &child.signature_alg
             )));
+        }
+
+        // CA/B 6.1.5: Key sizes
+        // NOTE: We don't currently enforce that RSA moduli are divisible by 8,
+        // since other implementations don't bother.
+        let issuer_spki = &issuer.certificate().tbs_cert.spki;
+        if matches!(
+            issuer_spki.algorithm.params,
+            AlgorithmParameters::Rsa(_) | AlgorithmParameters::RsaPss(_)
+        ) {
+            let rsa_key: Pksc1RsaPublicKey<'_> =
+                asn1::parse_single(issuer_spki.subject_public_key.as_bytes())?;
+
+            if rsa_key.n.as_bytes().len() * 8 < self.minimum_rsa_modulus {
+                return Err(ValidationError::Other("RSA key is too weak".into()));
+            }
         }
 
         let pk = issuer

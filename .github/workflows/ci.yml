@@ -29,28 +29,27 @@ jobs:
         PYTHON:
           - {VERSION: "3.12", NOXSESSION: "flake"}
           - {VERSION: "3.12", NOXSESSION: "rust"}
-          - {VERSION: "3.12", NOXSESSION: "docs", OPENSSL: {TYPE: "openssl", VERSION: "3.2.0"}}
+          - {VERSION: "3.12", NOXSESSION: "docs", OPENSSL: {TYPE: "openssl", VERSION: "3.2.1"}}
           - {VERSION: "pypy-3.9", NOXSESSION: "tests-nocoverage"}
           - {VERSION: "pypy-3.10", NOXSESSION: "tests-nocoverage"}
           - {VERSION: "3.12", NOXSESSION: "tests", OPENSSL: {TYPE: "openssl", VERSION: "1.1.1w"}}
-          - {VERSION: "3.12", NOXSESSION: "tests", OPENSSL: {TYPE: "openssl", VERSION: "3.0.12"}}
-          - {VERSION: "3.12", NOXSESSION: "tests", OPENSSL: {TYPE: "openssl", VERSION: "3.1.4"}}
-          - {VERSION: "3.12", NOXSESSION: "tests-ssh", OPENSSL: {TYPE: "openssl", VERSION: "3.2.0"}}
-          - {VERSION: "3.12", NOXSESSION: "tests", OPENSSL: {TYPE: "openssl", VERSION: "3.2.0", CONFIG_FLAGS: "no-engine no-rc2 no-srtp no-ct no-psk"}}
-          - {VERSION: "3.12", NOXSESSION: "tests", OPENSSL: {TYPE: "openssl", VERSION: "3.2.0", CONFIG_FLAGS: "no-legacy", NO_LEGACY: "1"}}
-          - {VERSION: "3.12", NOXSESSION: "tests", NOXARGS: "--enable-fips=1", OPENSSL: {TYPE: "openssl", CONFIG_FLAGS: "enable-fips", VERSION: "3.1.4"}}
-          - {VERSION: "3.12", NOXSESSION: "tests", NOXARGS: "--enable-fips=1", OPENSSL: {TYPE: "openssl", CONFIG_FLAGS: "enable-fips", VERSION: "3.2.0"}}
-          - {VERSION: "3.12", NOXSESSION: "tests", OPENSSL: {TYPE: "libressl", VERSION: "3.7.3"}}
+          - {VERSION: "3.12", NOXSESSION: "tests", OPENSSL: {TYPE: "openssl", VERSION: "3.0.13"}}
+          - {VERSION: "3.12", NOXSESSION: "tests", OPENSSL: {TYPE: "openssl", VERSION: "3.1.5"}}
+          - {VERSION: "3.12", NOXSESSION: "tests-ssh", OPENSSL: {TYPE: "openssl", VERSION: "3.2.1"}}
+          - {VERSION: "3.12", NOXSESSION: "tests", OPENSSL: {TYPE: "openssl", VERSION: "3.2.1", CONFIG_FLAGS: "no-engine no-rc2 no-srtp no-ct no-psk"}}
+          - {VERSION: "3.12", NOXSESSION: "tests", OPENSSL: {TYPE: "openssl", VERSION: "3.2.1", CONFIG_FLAGS: "no-legacy", NO_LEGACY: "1"}}
+          - {VERSION: "3.12", NOXSESSION: "tests", NOXARGS: "--enable-fips=1", OPENSSL: {TYPE: "openssl", CONFIG_FLAGS: "enable-fips", VERSION: "3.1.5"}}
+          - {VERSION: "3.12", NOXSESSION: "tests", NOXARGS: "--enable-fips=1", OPENSSL: {TYPE: "openssl", CONFIG_FLAGS: "enable-fips", VERSION: "3.2.1"}}
           - {VERSION: "3.12", NOXSESSION: "tests", OPENSSL: {TYPE: "libressl", VERSION: "3.8.2"}}
           - {VERSION: "3.12", NOXSESSION: "tests-randomorder"}
-          # Latest commit on the BoringSSL master branch, as of Jan 26, 2024.
-          - {VERSION: "3.12", NOXSESSION: "tests", OPENSSL: {TYPE: "boringssl", VERSION: "cba7adcd108e9a41a992b4c4fc18b050e4d05a66"}}
-          # Latest commit on the OpenSSL master branch, as of Jan 26, 2024.
-          - {VERSION: "3.12", NOXSESSION: "tests", OPENSSL: {TYPE: "openssl", VERSION: "0f644b96d209443b4566f7e86e3be2568292e75b"}}
+          # Latest commit on the BoringSSL master branch, as of Feb 01, 2024.
+          - {VERSION: "3.12", NOXSESSION: "tests", OPENSSL: {TYPE: "boringssl", VERSION: "608becc67282174594fdaf0ec9c96daca9710d2f"}}
+          # Latest commit on the OpenSSL master branch, as of Feb 02, 2024.
+          - {VERSION: "3.12", NOXSESSION: "tests", OPENSSL: {TYPE: "openssl", VERSION: "afb19f07aecc84998eeea56c4d65f5e0499abb5a"}}
           # Builds with various Rust versions. Includes MSRV and next
           # potential future MSRV:
           # 1.64 - maturin, workspace inheritance
-          # 1.65 - Generic associated types (GATs)
+          # 1.65 - Generic associated types (GATs), std::backtrace
           - {VERSION: "3.12", NOXSESSION: "rust-noclippy,tests", RUST: "1.63.0"}
           - {VERSION: "3.12", NOXSESSION: "rust,tests", RUST: "1.64.0"}
           - {VERSION: "3.12", NOXSESSION: "rust,tests", RUST: "beta"}
@@ -386,7 +385,7 @@ jobs:
           cache-dependency-path: ci-constraints-requirements.txt
         timeout-minutes: 3
       - run: ./.github/downstream.d/${{ matrix.DOWNSTREAM }}.sh install
-      - run: pip install . setuptools
+      - run: pip install .
         env:
           CARGO_TARGET_DIR: ${{ format('{0}/src/rust/target/', github.workspace) }}
       # cryptography main has a version of "(X+1).0.0.dev1" where X is the
@@ -396,15 +395,15 @@ jobs:
       # dist-info directory to pretend to be an older version to "solve" this.
       - run: |
           import json
-          import pkg_resources
+          import importlib.metadata
           import shutil
           import urllib.request
 
-          d = pkg_resources.get_distribution("cryptography")
+          d = importlib.metadata.distribution("cryptography")
           with urllib.request.urlopen("https://pypi.org/pypi/cryptography/json") as r:
               latest_version = json.load(r)["info"]["version"]
-          new_path = d.egg_info.replace(d.version, latest_version)
-          shutil.move(d.egg_info, new_path)
+          new_path = d.locate_file(f"cryptography-{latest_version}.dist-info")
+          shutil.move(d.locate_file(f"cryptography-{d.version}.dist-info"), new_path)
         shell: python
       - run: ./.github/downstream.d/${{ matrix.DOWNSTREAM }}.sh run
 

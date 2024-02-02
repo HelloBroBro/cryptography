@@ -4,18 +4,18 @@ version = 3
 
 [[package]]
 name = "asn1"
-version = "0.15.5"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae3ecbce89a22627b5e8e6e11d69715617138290289e385cde773b1fe50befdb"
+checksum = "a227d599843d72985b747c71958d16d670a6e6bc06fadf064570cae70c11fd0a"
 dependencies = [
  "asn1_derive",
 ]
 
 [[package]]
 name = "asn1_derive"
-version = "0.15.5"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "861af988fac460ac69a09f41e6217a8fb9178797b76fcc9478444be6a59be19c"
+checksum = "87132221a3cb3794c8def2208c723276686e0cd771541deb7768905ce13dc603"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -85,6 +85,7 @@ dependencies = [
 name = "cryptography-openssl"
 version = "0.1.0"
 dependencies = [
+ "cfg-if",
  "foreign-types",
  "foreign-types-shared",
  "openssl",
@@ -124,6 +125,7 @@ name = "cryptography-x509-verification"
 version = "0.1.0"
 dependencies = [
  "asn1",
+ "cryptography-key-parsing",
  "cryptography-x509",
  "once_cell",
  "pem",
@@ -158,9 +160,9 @@ checksum = "1e186cfbae8084e513daff4240b4797e342f988cecda4fb6c939150f96315fd8"
 
 [[package]]
 name = "libc"
-version = "0.2.152"
+version = "0.2.153"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13e3bf6590cbc649f4d1a3eefc9d5d6eb746f5200ffb04e5e142700b8faa56e7"
+checksum = "9c198f91728a82281a64e1f4f9eeb25d82cb32a5de251c6bd1b5154d63a8e7bd"
 
 [[package]]
 name = "lock_api"

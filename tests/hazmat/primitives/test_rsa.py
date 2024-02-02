@@ -72,7 +72,7 @@ def rsa_key_2048() -> rsa.RSAPrivateKey:
 
 class DummyMGF(padding.MGF):
     _salt_length = 0
-    _algorithm = hashes.SHA1()
+    _algorithm = hashes.SHA256()
 
 
 def _check_fips_key_length(backend, private_key):
@@ -251,14 +251,7 @@ class TestRSA:
         assert public_num.e == public_num2.e
 
     @pytest.mark.supported(
-        only_if=lambda backend: (
-            not backend._lib.CRYPTOGRAPHY_IS_BORINGSSL
-            and (
-                not backend._lib.CRYPTOGRAPHY_OPENSSL_LESS_THAN_111E
-                or backend._lib.CRYPTOGRAPHY_IS_LIBRESSL
-                and not backend._lib.CRYPTOGRAPHY_LIBRESSL_LESS_THAN_380
-            )
-        ),
+        only_if=lambda backend: not backend._lib.CRYPTOGRAPHY_IS_BORINGSSL,
         skip_message="Does not support RSA PSS loading",
     )
     @pytest.mark.parametrize(
@@ -309,14 +302,7 @@ class TestRSA:
             )
 
     @pytest.mark.supported(
-        only_if=lambda backend: (
-            backend._lib.CRYPTOGRAPHY_IS_BORINGSSL
-            and (
-                not backend._lib.CRYPTOGRAPHY_OPENSSL_LESS_THAN_111E
-                or backend._lib.CRYPTOGRAPHY_IS_LIBRESSL
-                and not backend._lib.CRYPTOGRAPHY_LIBRESSL_LESS_THAN_380
-            )
-        ),
+        only_if=lambda backend: backend._lib.CRYPTOGRAPHY_IS_BORINGSSL,
         skip_message="Test requires a backend without RSA-PSS key support",
     )
     def test_load_pss_unsupported(self, backend):
@@ -602,7 +588,7 @@ class TestRSASignature:
             backend.hash_supported(hashes.SHA512())
             and backend.rsa_padding_supported(
                 padding.PSS(
-                    mgf=padding.MGF1(hashes.SHA1()),
+                    mgf=padding.MGF1(hashes.SHA256()),
                     salt_length=padding.PSS.MAX_LENGTH,
                 )
             )
@@ -617,7 +603,7 @@ class TestRSASignature:
         private_key.sign(
             b"no failure",
             padding.PSS(
-                mgf=padding.MGF1(hashes.SHA1()),
+                mgf=padding.MGF1(hashes.SHA256()),
                 salt_length=padding.PSS.MAX_LENGTH,
             ),
             hashes.SHA512(),
@@ -626,7 +612,7 @@ class TestRSASignature:
     @pytest.mark.supported(
         only_if=lambda backend: backend.rsa_padding_supported(
             padding.PSS(
-                mgf=padding.MGF1(hashes.SHA1()),
+                mgf=padding.MGF1(hashes.SHA256()),
                 salt_length=padding.PSS.MAX_LENGTH,
             )
         ),
@@ -645,7 +631,7 @@ class TestRSASignature:
             private_key.sign(
                 b"msg",
                 padding.PSS(
-                    mgf=padding.MGF1(hashes.SHA1()),
+                    mgf=padding.MGF1(hashes.SHA256()),
                     salt_length=padding.PSS.MAX_LENGTH,
                 ),
                 hashes.SHA512(),
@@ -654,7 +640,7 @@ class TestRSASignature:
     @pytest.mark.supported(
         only_if=lambda backend: backend.rsa_padding_supported(
             padding.PSS(
-                mgf=padding.MGF1(hashes.SHA1()),
+                mgf=padding.MGF1(hashes.SHA256()),
                 salt_length=padding.PSS.MAX_LENGTH,
             )
         ),
@@ -668,7 +654,7 @@ class TestRSASignature:
             private_key.sign(
                 b"failure coming",
                 padding.PSS(
-                    mgf=padding.MGF1(hashes.SHA1()), salt_length=1000000
+                    mgf=padding.MGF1(hashes.SHA256()), salt_length=1000000
                 ),
                 hashes.SHA256(),
             )
@@ -678,7 +664,7 @@ class TestRSASignature:
     ):
         private_key = rsa_key_2048
         with raises_unsupported_algorithm(_Reasons.UNSUPPORTED_PADDING):
-            private_key.sign(b"msg", DummyAsymmetricPadding(), hashes.SHA1())
+            private_key.sign(b"msg", DummyAsymmetricPadding(), hashes.SHA256())
 
     def test_padding_incorrect_type(
         self, rsa_key_2048: rsa.RSAPrivateKey, backend
@@ -693,7 +679,7 @@ class TestRSASignature:
 
     @pytest.mark.supported(
         only_if=lambda backend: backend.rsa_padding_supported(
-            padding.PSS(mgf=padding.MGF1(hashes.SHA1()), salt_length=0)
+            padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=0)
         ),
         skip_message="Does not support PSS.",
     )
@@ -708,7 +694,7 @@ class TestRSASignature:
                     mgf=DummyMGF(),
                     salt_length=padding.PSS.MAX_LENGTH,
                 ),
-                hashes.SHA1(),
+                hashes.SHA256(),
             )
 
     @pytest.mark.supported(
@@ -780,7 +766,7 @@ class TestRSASignature:
 
     @pytest.mark.supported(
         only_if=lambda backend: backend.rsa_padding_supported(
-            padding.PSS(mgf=padding.MGF1(hashes.SHA1()), salt_length=0)
+            padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=0)
         ),
         skip_message="Does not support PSS.",
     )
@@ -790,7 +776,7 @@ class TestRSASignature:
         h = hashes.Hash(hashes.SHA256(), backend)
         h.update(message)
         digest = h.finalize()
-        pss = padding.PSS(mgf=padding.MGF1(hashes.SHA1()), salt_length=0)
+        pss = padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=0)
         prehashed_alg = asym_utils.Prehashed(hashes.SHA256())
         signature = private_key.sign(digest, pss, prehashed_alg)
         public_key = private_key.public_key()
@@ -830,7 +816,7 @@ class TestRSASignature:
     )
     @pytest.mark.supported(
         only_if=lambda backend: backend.rsa_padding_supported(
-            padding.PSS(mgf=padding.MGF1(hashes.SHA1()), salt_length=0)
+            padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=0)
         ),
         skip_message="Does not support PSS.",
     )
@@ -858,7 +844,7 @@ class TestRSASignature:
 
     @pytest.mark.supported(
         only_if=lambda backend: backend.rsa_padding_supported(
-            padding.PSS(mgf=padding.MGF1(hashes.SHA1()), salt_length=0)
+            padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=0)
         ),
         skip_message="Does not support PSS.",
     )
@@ -870,8 +856,8 @@ class TestRSASignature:
         h = hashes.Hash(hashes.SHA512(), backend)
         h.update(message)
         digest = h.finalize()
-        pss = padding.PSS(mgf=padding.MGF1(hashes.SHA1()), salt_length=0)
-        prehashed_alg = asym_utils.Prehashed(hashes.SHA1())
+        pss = padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=0)
+        prehashed_alg = asym_utils.Prehashed(hashes.SHA256())
         with pytest.raises(ValueError):
             private_key.sign(digest, pss, prehashed_alg)
 
@@ -1107,17 +1093,11 @@ class TestRSAVerification:
     @pytest.mark.supported(
         only_if=lambda backend: backend.rsa_padding_supported(
             padding.PSS(
-                mgf=padding.MGF1(hashes.SHA1()),
+                mgf=padding.MGF1(hashes.SHA256()),
                 salt_length=padding.PSS.MAX_LENGTH,
             )
         ),
         skip_message="Does not support PSS.",
-    )
-    @pytest.mark.supported(
-        only_if=lambda backend: backend.signature_hash_supported(
-            hashes.SHA1()
-        ),
-        skip_message="Does not support SHA1 signature.",
     )
     @pytest.mark.skip_fips(reason="Unsupported key size in FIPS mode.")
     def test_invalid_pss_signature_wrong_data(self, backend):
@@ -1139,26 +1119,20 @@ class TestRSAVerification:
                 signature,
                 b"incorrect data",
                 padding.PSS(
-                    mgf=padding.MGF1(algorithm=hashes.SHA1()),
+                    mgf=padding.MGF1(algorithm=hashes.SHA256()),
                     salt_length=padding.PSS.MAX_LENGTH,
                 ),
-                hashes.SHA1(),
+                hashes.SHA256(),
             )
 
     @pytest.mark.supported(
         only_if=lambda backend: backend.rsa_padding_supported(
             padding.PSS(
-                mgf=padding.MGF1(hashes.SHA1()),
+                mgf=padding.MGF1(hashes.SHA256()),
                 salt_length=padding.PSS.MAX_LENGTH,
             )
         ),
         skip_message="Does not support PSS.",
-    )
-    @pytest.mark.supported(
-        only_if=lambda backend: backend.signature_hash_supported(
-            hashes.SHA1()
-        ),
-        skip_message="Does not support SHA1 signature.",
     )
     @pytest.mark.skip_fips(reason="Unsupported key size in FIPS mode.")
     def test_invalid_pss_signature_wrong_key(self, backend):
@@ -1182,26 +1156,20 @@ class TestRSAVerification:
                 signature,
                 b"sign me",
                 padding.PSS(
-                    mgf=padding.MGF1(algorithm=hashes.SHA1()),
+                    mgf=padding.MGF1(algorithm=hashes.SHA256()),
                     salt_length=padding.PSS.MAX_LENGTH,
                 ),
-                hashes.SHA1(),
+                hashes.SHA256(),
             )
 
     @pytest.mark.supported(
         only_if=lambda backend: backend.rsa_padding_supported(
             padding.PSS(
-                mgf=padding.MGF1(hashes.SHA1()),
+                mgf=padding.MGF1(hashes.SHA256()),
                 salt_length=padding.PSS.MAX_LENGTH,
             )
         ),
         skip_message="Does not support PSS.",
-    )
-    @pytest.mark.supported(
-        only_if=lambda backend: backend.signature_hash_supported(
-            hashes.SHA1()
-        ),
-        skip_message="Does not support SHA1 signature.",
     )
     @pytest.mark.skip_fips(reason="Unsupported key size in FIPS mode.")
     def test_invalid_pss_signature_data_too_large_for_modulus(self, backend):
@@ -1225,25 +1193,19 @@ class TestRSAVerification:
                 signature,
                 b"sign me",
                 padding.PSS(
-                    mgf=padding.MGF1(algorithm=hashes.SHA1()),
+                    mgf=padding.MGF1(algorithm=hashes.SHA256()),
                     salt_length=padding.PSS.MAX_LENGTH,
                 ),
-                hashes.SHA1(),
+                hashes.SHA256(),
             )
 
-    @pytest.mark.supported(
-        only_if=lambda backend: backend.signature_hash_supported(
-            hashes.SHA1()
-        ),
-        skip_message="Does not support SHA1 signature.",
-    )
     def test_invalid_pss_signature_recover(
         self, rsa_key_2048: rsa.RSAPrivateKey, backend
     ):
         private_key = rsa_key_2048
         public_key = private_key.public_key()
         pss_padding = padding.PSS(
-            mgf=padding.MGF1(algorithm=hashes.SHA1()),
+            mgf=padding.MGF1(algorithm=hashes.SHA256()),
             salt_length=padding.PSS.MAX_LENGTH,
         )
         signature = private_key.sign(b"sign me", pss_padding, hashes.SHA256())
@@ -1285,7 +1247,7 @@ class TestRSAVerification:
 
     @pytest.mark.supported(
         only_if=lambda backend: backend.rsa_padding_supported(
-            padding.PSS(mgf=padding.MGF1(hashes.SHA1()), salt_length=0)
+            padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=0)
         ),
         skip_message="Does not support PSS.",
     )
@@ -1307,7 +1269,7 @@ class TestRSAVerification:
     @pytest.mark.supported(
         only_if=lambda backend: backend.rsa_padding_supported(
             padding.PSS(
-                mgf=padding.MGF1(hashes.SHA1()),
+                mgf=padding.MGF1(hashes.SHA512()),
                 salt_length=padding.PSS.MAX_LENGTH,
             )
         ),
@@ -1332,7 +1294,7 @@ class TestRSAVerification:
                 signature,
                 b"msg doesn't matter",
                 padding.PSS(
-                    mgf=padding.MGF1(algorithm=hashes.SHA1()),
+                    mgf=padding.MGF1(algorithm=hashes.SHA512()),
                     salt_length=padding.PSS.MAX_LENGTH,
                 ),
                 hashes.SHA512(),
@@ -1341,17 +1303,11 @@ class TestRSAVerification:
     @pytest.mark.supported(
         only_if=lambda backend: backend.rsa_padding_supported(
             padding.PSS(
-                mgf=padding.MGF1(hashes.SHA1()),
+                mgf=padding.MGF1(hashes.SHA256()),
                 salt_length=padding.PSS.MAX_LENGTH,
             )
         ),
         skip_message="Does not support PSS.",
-    )
-    @pytest.mark.supported(
-        only_if=lambda backend: backend.signature_hash_supported(
-            hashes.SHA1()
-        ),
-        skip_message="Does not support SHA1 signature.",
     )
     @pytest.mark.skip_fips(reason="Unsupported key size in FIPS mode.")
     def test_pss_verify_salt_length_too_long(self, backend):
@@ -1374,11 +1330,11 @@ class TestRSAVerification:
                 b"sign me",
                 padding.PSS(
                     mgf=padding.MGF1(
-                        algorithm=hashes.SHA1(),
+                        algorithm=hashes.SHA256(),
                     ),
                     salt_length=1000000,
                 ),
-                hashes.SHA1(),
+                hashes.SHA256(),
             )
 
     @pytest.mark.parametrize(
@@ -1675,16 +1631,16 @@ class TestPSS:
     def test_invalid_salt_length_not_integer(self):
         with pytest.raises(TypeError):
             padding.PSS(
-                mgf=padding.MGF1(hashes.SHA1()),
+                mgf=padding.MGF1(hashes.SHA256()),
                 salt_length=b"not_a_length",  # type:ignore[arg-type]
             )
 
     def test_invalid_salt_length_negative_integer(self):
         with pytest.raises(ValueError):
-            padding.PSS(mgf=padding.MGF1(hashes.SHA1()), salt_length=-1)
+            padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=-1)
 
     def test_valid_pss_parameters(self):
-        algorithm = hashes.SHA1()
+        algorithm = hashes.SHA256()
         salt_length = algorithm.digest_size
         mgf = padding.MGF1(algorithm)
         pss = padding.PSS(mgf=mgf, salt_length=salt_length)
@@ -1692,14 +1648,14 @@ class TestPSS:
         assert pss._salt_length == salt_length
 
     def test_valid_pss_parameters_maximum(self):
-        algorithm = hashes.SHA1()
+        algorithm = hashes.SHA256()
         mgf = padding.MGF1(algorithm)
         pss = padding.PSS(mgf=mgf, salt_length=padding.PSS.MAX_LENGTH)
         assert pss._mgf == mgf
         assert pss._salt_length == padding.PSS.MAX_LENGTH
 
     def test_mgf_property(self):
-        algorithm = hashes.SHA1()
+        algorithm = hashes.SHA256()
         mgf = padding.MGF1(algorithm)
         pss = padding.PSS(mgf=mgf, salt_length=padding.PSS.MAX_LENGTH)
         assert pss.mgf == mgf
@@ -1712,14 +1668,14 @@ class TestMGF1:
             padding.MGF1(b"not_a_hash")  # type:ignore[arg-type]
 
     def test_valid_mgf1_parameters(self):
-        algorithm = hashes.SHA1()
+        algorithm = hashes.SHA256()
         mgf = padding.MGF1(algorithm)
         assert mgf._algorithm == algorithm
 
 
 class TestOAEP:
     def test_invalid_algorithm(self):
-        mgf = padding.MGF1(hashes.SHA1())
+        mgf = padding.MGF1(hashes.SHA256())
         with pytest.raises(TypeError):
             padding.OAEP(
                 mgf=mgf,
@@ -1728,14 +1684,14 @@ class TestOAEP:
             )
 
     def test_algorithm_property(self):
-        algorithm = hashes.SHA1()
+        algorithm = hashes.SHA256()
         mgf = padding.MGF1(algorithm)
         oaep = padding.OAEP(mgf=mgf, algorithm=algorithm, label=None)
         assert oaep.algorithm == algorithm
         assert oaep.algorithm == oaep._algorithm
 
     def test_mgf_property(self):
-        algorithm = hashes.SHA1()
+        algorithm = hashes.SHA256()
         mgf = padding.MGF1(algorithm)
         oaep = padding.OAEP(mgf=mgf, algorithm=algorithm, label=None)
         assert oaep.mgf == mgf
@@ -1900,8 +1856,8 @@ class TestRSADecryption:
     @pytest.mark.supported(
         only_if=lambda backend: backend.rsa_encryption_supported(
             padding.OAEP(
-                mgf=padding.MGF1(algorithm=hashes.SHA1()),
-                algorithm=hashes.SHA1(),
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
                 label=None,
             )
         ),
@@ -1918,8 +1874,8 @@ class TestRSADecryption:
         ciphertext = private_key.public_key().encrypt(
             b"secure data",
             padding.OAEP(
-                mgf=padding.MGF1(algorithm=hashes.SHA1()),
-                algorithm=hashes.SHA1(),
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
                 label=None,
             ),
         )
@@ -1932,8 +1888,8 @@ class TestRSADecryption:
             private_key_alt.decrypt(
                 ciphertext,
                 padding.OAEP(
-                    mgf=padding.MGF1(algorithm=hashes.SHA1()),
-                    algorithm=hashes.SHA1(),
+                    mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                    algorithm=hashes.SHA256(),
                     label=None,
                 ),
             )
@@ -2008,7 +1964,7 @@ class TestRSADecryption:
                 b"0" * 256,
                 padding.OAEP(
                     mgf=DummyMGF(),
-                    algorithm=hashes.SHA1(),
+                    algorithm=hashes.SHA256(),
                     label=None,
                 ),
             )
@@ -2018,8 +1974,8 @@ class TestRSAEncryption:
     @pytest.mark.supported(
         only_if=lambda backend: backend.rsa_encryption_supported(
             padding.OAEP(
-                mgf=padding.MGF1(algorithm=hashes.SHA1()),
-                algorithm=hashes.SHA1(),
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
                 label=None,
             )
         ),
@@ -2042,8 +1998,8 @@ class TestRSAEncryption:
             ),
             [
                 padding.OAEP(
-                    mgf=padding.MGF1(algorithm=hashes.SHA1()),
-                    algorithm=hashes.SHA1(),
+                    mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                    algorithm=hashes.SHA256(),
                     label=None,
                 )
             ],
@@ -2208,7 +2164,7 @@ class TestRSAEncryption:
                 b"ciphertext",
                 padding.OAEP(
                     mgf=DummyMGF(),
-                    algorithm=hashes.SHA1(),
+                    algorithm=hashes.SHA256(),
                     label=None,
                 ),
             )

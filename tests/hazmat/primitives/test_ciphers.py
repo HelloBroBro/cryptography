@@ -10,25 +10,43 @@ import sys
 
 import pytest
 
-from cryptography.exceptions import AlreadyFinalized, _Reasons
+from cryptography import utils
+from cryptography.exceptions import AlreadyFinalized
 from cryptography.hazmat.primitives import ciphers
 from cryptography.hazmat.primitives.ciphers import modes
 from cryptography.hazmat.primitives.ciphers.algorithms import (
     AES,
-    ARC4,
     Camellia,
-    TripleDES,
-    _BlowfishInternal,
-    _CAST5Internal,
-    _IDEAInternal,
-    _SEEDInternal,
 )
 
-from ...utils import (
-    load_nist_vectors,
-    load_vectors_from_file,
-    raises_unsupported_algorithm,
-)
+from ...utils import load_nist_vectors, load_vectors_from_file
+
+
+def test_deprecated_ciphers_import_with_warning():
+    with pytest.warns(utils.CryptographyDeprecationWarning):
+        from cryptography.hazmat.primitives.ciphers.algorithms import (
+            Blowfish,  # noqa: F401
+        )
+    with pytest.warns(utils.CryptographyDeprecationWarning):
+        from cryptography.hazmat.primitives.ciphers.algorithms import (
+            CAST5,  # noqa: F401
+        )
+    with pytest.warns(utils.CryptographyDeprecationWarning):
+        from cryptography.hazmat.primitives.ciphers.algorithms import (
+            IDEA,  # noqa: F401
+        )
+    with pytest.warns(utils.CryptographyDeprecationWarning):
+        from cryptography.hazmat.primitives.ciphers.algorithms import (
+            SEED,  # noqa: F401
+        )
+    with pytest.warns(utils.CryptographyDeprecationWarning):
+        from cryptography.hazmat.primitives.ciphers.algorithms import (
+            ARC4,  # noqa: F401
+        )
+    with pytest.warns(utils.CryptographyDeprecationWarning):
+        from cryptography.hazmat.primitives.ciphers.algorithms import (
+            TripleDES,  # noqa: F401
+        )
 
 
 class TestAES:
@@ -93,131 +111,6 @@ class TestCamellia:
     def test_invalid_key_type(self):
         with pytest.raises(TypeError, match="key must be bytes"):
             Camellia("0" * 32)  # type: ignore[arg-type]
-
-
-class TestTripleDES:
-    @pytest.mark.parametrize("key", [b"0" * 16, b"0" * 32, b"0" * 48])
-    def test_key_size(self, key):
-        cipher = TripleDES(binascii.unhexlify(key))
-        assert cipher.key_size == 192
-
-    def test_invalid_key_size(self):
-        with pytest.raises(ValueError):
-            TripleDES(binascii.unhexlify(b"0" * 12))
-
-    def test_invalid_key_type(self):
-        with pytest.raises(TypeError, match="key must be bytes"):
-            TripleDES("0" * 16)  # type: ignore[arg-type]
-
-
-class TestBlowfish:
-    @pytest.mark.parametrize(
-        ("key", "keysize"),
-        [(b"0" * (keysize // 4), keysize) for keysize in range(32, 449, 8)],
-    )
-    def test_key_size(self, key, keysize):
-        cipher = _BlowfishInternal(binascii.unhexlify(key))
-        assert cipher.key_size == keysize
-
-    def test_invalid_key_size(self):
-        with pytest.raises(ValueError):
-            _BlowfishInternal(binascii.unhexlify(b"0" * 6))
-
-    def test_invalid_key_type(self):
-        with pytest.raises(TypeError, match="key must be bytes"):
-            _BlowfishInternal("0" * 8)  # type: ignore[arg-type]
-
-
-class TestCAST5:
-    @pytest.mark.parametrize(
-        ("key", "keysize"),
-        [(b"0" * (keysize // 4), keysize) for keysize in range(40, 129, 8)],
-    )
-    def test_key_size(self, key, keysize):
-        cipher = _CAST5Internal(binascii.unhexlify(key))
-        assert cipher.key_size == keysize
-
-    def test_invalid_key_size(self):
-        with pytest.raises(ValueError):
-            _CAST5Internal(binascii.unhexlify(b"0" * 34))
-
-    def test_invalid_key_type(self):
-        with pytest.raises(TypeError, match="key must be bytes"):
-            _CAST5Internal("0" * 10)  # type: ignore[arg-type]
-
-
-class TestARC4:
-    @pytest.mark.parametrize(
-        ("key", "keysize"),
-        [
-            (b"0" * 10, 40),
-            (b"0" * 14, 56),
-            (b"0" * 16, 64),
-            (b"0" * 20, 80),
-            (b"0" * 32, 128),
-            (b"0" * 48, 192),
-            (b"0" * 64, 256),
-        ],
-    )
-    def test_key_size(self, key, keysize):
-        cipher = ARC4(binascii.unhexlify(key))
-        assert cipher.key_size == keysize
-
-    def test_invalid_key_size(self):
-        with pytest.raises(ValueError):
-            ARC4(binascii.unhexlify(b"0" * 34))
-
-    def test_invalid_key_type(self):
-        with pytest.raises(TypeError, match="key must be bytes"):
-            ARC4("0" * 10)  # type: ignore[arg-type]
-
-
-class TestIDEA:
-    def test_key_size(self):
-        cipher = _IDEAInternal(b"\x00" * 16)
-        assert cipher.key_size == 128
-
-    def test_invalid_key_size(self):
-        with pytest.raises(ValueError):
-            _IDEAInternal(b"\x00" * 17)
-
-    def test_invalid_key_type(self):
-        with pytest.raises(TypeError, match="key must be bytes"):
-            _IDEAInternal("0" * 16)  # type: ignore[arg-type]
-
-
-class TestSEED:
-    def test_key_size(self):
-        cipher = _SEEDInternal(b"\x00" * 16)
-        assert cipher.key_size == 128
-
-    def test_invalid_key_size(self):
-        with pytest.raises(ValueError):
-            _SEEDInternal(b"\x00" * 17)
-
-    def test_invalid_key_type(self):
-        with pytest.raises(TypeError, match="key must be bytes"):
-            _SEEDInternal("0" * 16)  # type: ignore[arg-type]
-
-
-def test_invalid_mode_algorithm():
-    with raises_unsupported_algorithm(_Reasons.UNSUPPORTED_CIPHER):
-        ciphers.Cipher(
-            ARC4(b"\x00" * 16),
-            modes.GCM(b"\x00" * 12),
-        )
-
-    with raises_unsupported_algorithm(_Reasons.UNSUPPORTED_CIPHER):
-        ciphers.Cipher(
-            ARC4(b"\x00" * 16),
-            modes.CBC(b"\x00" * 12),
-        )
-
-    with raises_unsupported_algorithm(_Reasons.UNSUPPORTED_CIPHER):
-        ciphers.Cipher(
-            ARC4(b"\x00" * 16),
-            modes.CTR(b"\x00" * 12),
-        )
 
 
 @pytest.mark.supported(

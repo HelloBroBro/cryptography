@@ -251,6 +251,10 @@ pub static CRL_REASON_FLAGS: LazyPyImport =
     LazyPyImport::new("cryptography.x509.extensions", &["_CRLREASONFLAGS"]);
 pub static REASON_BIT_MAPPING: LazyPyImport =
     LazyPyImport::new("cryptography.x509.extensions", &["_REASON_BIT_MAPPING"]);
+pub static CRL_ENTRY_REASON_ENUM_TO_CODE: LazyPyImport = LazyPyImport::new(
+    "cryptography.x509.extensions",
+    &["_CRL_ENTRY_REASON_ENUM_TO_CODE"],
+);
 pub static TLS_FEATURE_TYPE_TO_ENUM: LazyPyImport = LazyPyImport::new(
     "cryptography.x509.extensions",
     &["_TLS_FEATURE_TYPE_TO_ENUM"],
@@ -327,6 +331,7 @@ pub static HASHES_MODULE: LazyPyImport =
     LazyPyImport::new("cryptography.hazmat.primitives.hashes", &[]);
 pub static HASH_ALGORITHM: LazyPyImport =
     LazyPyImport::new("cryptography.hazmat.primitives.hashes", &["HashAlgorithm"]);
+#[cfg(not(any(CRYPTOGRAPHY_IS_LIBRESSL, CRYPTOGRAPHY_IS_BORINGSSL)))]
 pub static EXTENDABLE_OUTPUT_FUNCTION: LazyPyImport = LazyPyImport::new(
     "cryptography.hazmat.primitives.hashes",
     &["ExtendableOutputFunction"],
@@ -375,10 +380,6 @@ pub static CALCULATE_MAX_PSS_SALT_LENGTH: LazyPyImport = LazyPyImport::new(
     &["calculate_max_pss_salt_length"],
 );
 
-pub static CRL_ENTRY_REASON_ENUM_TO_CODE: LazyPyImport = LazyPyImport::new(
-    "cryptography.hazmat.backends.openssl.decode_asn1",
-    &["_CRL_ENTRY_REASON_ENUM_TO_CODE"],
-);
 pub static BACKEND_HANDLE_KEY_LOADING_ERROR: LazyPyImport = LazyPyImport::new(
     "cryptography.hazmat.backends.openssl.backend",
     &["backend", "_handle_key_loading_error"],
@@ -441,8 +442,15 @@ pub static DSA_PUBLIC_KEY: LazyPyImport = LazyPyImport::new(
     &["DSAPublicKey"],
 );
 
-pub static EXTRACT_BUFFER_LENGTH: LazyPyImport =
-    LazyPyImport::new("cryptography.utils", &["_extract_buffer_length"]);
+pub static FFI_FROM_BUFFER: LazyPyImport = LazyPyImport::new(
+    "cryptography.hazmat.bindings._rust",
+    &["_openssl", "ffi", "from_buffer"],
+);
+
+pub static FFI_CAST: LazyPyImport = LazyPyImport::new(
+    "cryptography.hazmat.bindings._rust",
+    &["_openssl", "ffi", "cast"],
+);
 
 pub static BLOCK_CIPHER_ALGORITHM: LazyPyImport = LazyPyImport::new(
     "cryptography.hazmat.primitives.ciphers",
@@ -450,7 +458,7 @@ pub static BLOCK_CIPHER_ALGORITHM: LazyPyImport = LazyPyImport::new(
 );
 
 pub static TRIPLE_DES: LazyPyImport = LazyPyImport::new(
-    "cryptography.hazmat.primitives.ciphers.algorithms",
+    "cryptography.hazmat.decrepit.ciphers.algorithms",
     &["TripleDES"],
 );
 pub static AES: LazyPyImport = LazyPyImport::new(
@@ -469,27 +477,24 @@ pub static SM4: LazyPyImport = LazyPyImport::new(
     "cryptography.hazmat.primitives.ciphers.algorithms",
     &["SM4"],
 );
-pub static SEED: LazyPyImport = LazyPyImport::new(
-    "cryptography.hazmat.primitives.ciphers.algorithms",
-    &["_SEEDInternal"],
-);
+#[cfg(not(CRYPTOGRAPHY_OSSLCONF = "OPENSSL_NO_SEED"))]
+pub static SEED: LazyPyImport =
+    LazyPyImport::new("cryptography.hazmat.decrepit.ciphers.algorithms", &["SEED"]);
 pub static CAMELLIA: LazyPyImport = LazyPyImport::new(
     "cryptography.hazmat.primitives.ciphers.algorithms",
     &["Camellia"],
 );
 pub static BLOWFISH: LazyPyImport = LazyPyImport::new(
-    "cryptography.hazmat.primitives.ciphers.algorithms",
-    &["_BlowfishInternal"],
+    "cryptography.hazmat.decrepit.ciphers.algorithms",
+    &["Blowfish"],
 );
 pub static CAST5: LazyPyImport = LazyPyImport::new(
-    "cryptography.hazmat.primitives.ciphers.algorithms",
-    &["_CAST5Internal"],
+    "cryptography.hazmat.decrepit.ciphers.algorithms",
+    &["CAST5"],
 );
 #[cfg(not(CRYPTOGRAPHY_OSSLCONF = "OPENSSL_NO_IDEA"))]
-pub static IDEA: LazyPyImport = LazyPyImport::new(
-    "cryptography.hazmat.primitives.ciphers.algorithms",
-    &["_IDEAInternal"],
-);
+pub static IDEA: LazyPyImport =
+    LazyPyImport::new("cryptography.hazmat.decrepit.ciphers.algorithms", &["IDEA"]);
 
 pub static CBC: LazyPyImport =
     LazyPyImport::new("cryptography.hazmat.primitives.ciphers.modes", &["CBC"]);

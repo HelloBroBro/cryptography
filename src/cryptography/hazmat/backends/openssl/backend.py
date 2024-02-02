@@ -11,10 +11,17 @@ import typing
 
 from cryptography import utils, x509
 from cryptography.exceptions import UnsupportedAlgorithm
-from cryptography.hazmat.backends.openssl import aead
 from cryptography.hazmat.backends.openssl.ciphers import _CipherContext
 from cryptography.hazmat.bindings._rust import openssl as rust_openssl
 from cryptography.hazmat.bindings.openssl import binding
+from cryptography.hazmat.decrepit.ciphers.algorithms import (
+    ARC4,
+    CAST5,
+    IDEA,
+    SEED,
+    Blowfish,
+    TripleDES,
+)
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives._asymmetric import AsymmetricPadding
 from cryptography.hazmat.primitives.asymmetric import ec
@@ -35,15 +42,9 @@ from cryptography.hazmat.primitives.ciphers.algorithms import (
     AES,
     AES128,
     AES256,
-    ARC4,
     SM4,
     Camellia,
     ChaCha20,
-    TripleDES,
-    _BlowfishInternal,
-    _CAST5Internal,
-    _IDEAInternal,
-    _SEEDInternal,
 )
 from cryptography.hazmat.primitives.ciphers.modes import (
     CBC,
@@ -79,18 +80,6 @@ class Backend:
 
     name = "openssl"
 
-    # FIPS has opinions about acceptable algorithms and key sizes, but the
-    # disallowed algorithms are still present in OpenSSL. They just error if
-    # you try to use them. To avoid that we allowlist the algorithms in
-    # FIPS 140-3. This isn't ideal, but FIPS 140-3 is trash so here we are.
-    _fips_aead: typing.ClassVar[set[bytes]] = {
-        b"aes-128-ccm",
-        b"aes-192-ccm",
-        b"aes-256-ccm",
-        b"aes-128-gcm",
-        b"aes-192-gcm",
-        b"aes-256-gcm",
-    }
     # TripleDES encryption is disallowed/deprecated throughout 2023 in
     # FIPS 140-3. To keep it simple we denylist any use of TripleDES (TDEA).
     _fips_ciphers = (AES,)
@@ -138,7 +127,7 @@ class Backend:
         return "<OpenSSLBackend(version: {}, FIPS: {}, Legacy: {})>".format(
             self.openssl_version_text(),
             self._fips_enabled,
-            self._binding._legacy_provider_loaded,
+            rust_openssl._legacy_provider_loaded,
         )
 
     def openssl_assert(
@@ -160,7 +149,7 @@ class Backend:
         Friendly string name of the loaded OpenSSL library. This is not
         necessarily the same version as it was compiled against.
 
-        Example: OpenSSL 1.1.1d  10 Sep 2019
+        Example: OpenSSL 3.2.1 30 Jan 2024
         """
         return self._ffi.string(
             self._lib.OpenSSL_version(self._lib.OPENSSL_VERSION)
@@ -277,23 +266,23 @@ class Backend:
         # we get an EVP_CIPHER * in the _CipherContext __init__, but OpenSSL 3
         # will return a valid pointer even though the cipher is unavailable.
         if (
-            self._binding._legacy_provider_loaded
+            rust_openssl._legacy_provider_loaded
             or not self._lib.CRYPTOGRAPHY_OPENSSL_300_OR_GREATER
         ):
             for mode_cls in [CBC, CFB, OFB, ECB]:
                 self.register_cipher_adapter(
-                    _BlowfishInternal,
+                    Blowfish,
                     mode_cls,
                     GetCipherByName("bf-{mode.name}"),
                 )
             for mode_cls in [CBC, CFB, OFB, ECB]:
                 self.register_cipher_adapter(
-                    _SEEDInternal,
+                    SEED,
                     mode_cls,
                     GetCipherByName("seed-{mode.name}"),
                 )
             for cipher_cls, mode_cls in itertools.product(
-                [_CAST5Internal, _IDEAInternal],
+                [CAST5, IDEA],
                 [CBC, OFB, CFB, ECB],
             ):
                 self.register_cipher_adapter(
@@ -324,15 +313,6 @@ class Backend:
 
     def _consume_errors(self) -> list[rust_openssl.OpenSSLError]:
         return rust_openssl.capture_error_stack()
-
-    def generate_rsa_parameters_supported(
-        self, public_exponent: int, key_size: int
-    ) -> bool:
-        return (
-            public_exponent >= 3
-            and public_exponent & 1 != 0
-            and key_size >= 512
-        )
 
     def _bytes_to_bio(self, data: bytes) -> _MemoryBIO:
         """
@@ -567,9 +547,6 @@ class Backend:
             not self._lib.CRYPTOGRAPHY_IS_LIBRESSL
             and not self._lib.CRYPTOGRAPHY_IS_BORINGSSL
         )
-
-    def aead_cipher_supported(self, cipher) -> bool:
-        return aead._aead_cipher_supported(self, cipher)
 
     def _zero_data(self, data, length: int) -> None:
         # We clear things this way because at the moment we're not

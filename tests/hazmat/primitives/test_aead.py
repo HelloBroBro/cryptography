@@ -296,6 +296,9 @@ class TestAESCCM:
         with pytest.raises(ValueError):
             aesccm.encrypt(nonce, pt, None)
 
+        with pytest.raises(ValueError):
+            aesccm.decrypt(nonce, pt, None)
+
     @pytest.mark.parametrize(
         ("nonce", "data", "associated_data"),
         [
@@ -451,6 +454,8 @@ class TestAESGCM:
         aesgcm = AESGCM(key)
         with pytest.raises(ValueError):
             aesgcm.encrypt(b"\x00" * length, b"hi", None)
+        with pytest.raises(ValueError):
+            aesgcm.decrypt(b"\x00" * length, b"hi", None)
 
     def test_bad_key(self, backend):
         with pytest.raises(TypeError):
