@@ -10,6 +10,7 @@ import pytest
 
 from cryptography import x509
 from cryptography.exceptions import UnsupportedAlgorithm
+from cryptography.hazmat.bindings._rust import openssl as rust_openssl
 from cryptography.hazmat.decrepit.ciphers.algorithms import RC2
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import (
@@ -90,7 +91,7 @@ class TestPKCS12Loading:
     def test_load_pkcs12_ec_keys_rc2(self, filename, password, backend):
         self._test_load_pkcs12_ec_keys(filename, password, backend)
 
-    def test_load_pkcs12_cert_only(self, backend):
+    def test_load_key_and_cert_cert_only(self, backend):
         cert, _ = _load_ca(backend)
         parsed_key, parsed_cert, parsed_more_certs = load_vectors_from_file(
             os.path.join("pkcs12", "cert-aes256cbc-no-key.p12"),
@@ -103,7 +104,7 @@ class TestPKCS12Loading:
         assert parsed_key is None
         assert parsed_more_certs == [cert]
 
-    def test_load_pkcs12_key_only(self, backend):
+    def test_load_key_and_certificates_key_only(self, backend):
         _, key = _load_ca(backend)
         assert isinstance(key, ec.EllipticCurvePrivateKey)
         parsed_key, parsed_cert, parsed_more_certs = load_vectors_from_file(
@@ -117,6 +118,19 @@ class TestPKCS12Loading:
         assert parsed_key.private_numbers() == key.private_numbers()
         assert parsed_cert is None
         assert parsed_more_certs == []
+
+    def test_load_pkcs12_key_only(self, backend):
+        _, key = _load_ca(backend)
+        assert isinstance(key, ec.EllipticCurvePrivateKey)
+        p12 = load_vectors_from_file(
+            os.path.join("pkcs12", "no-cert-key-aes256cbc.p12"),
+            lambda data: load_pkcs12(data.read(), b"cryptography", backend),
+            mode="rb",
+        )
+        assert isinstance(p12.key, ec.EllipticCurvePrivateKey)
+        assert p12.key.private_numbers() == key.private_numbers()
+        assert p12.cert is None
+        assert p12.additional_certs == []
 
     def test_non_bytes(self, backend):
         with pytest.raises(TypeError):
@@ -558,7 +572,7 @@ class TestPKCS12Creation:
     ):
         if (
             enc_alg is PBES.PBESv2SHA256AndAES256CBC
-        ) and not backend._lib.CRYPTOGRAPHY_OPENSSL_300_OR_GREATER:
+        ) and not rust_openssl.CRYPTOGRAPHY_OPENSSL_300_OR_GREATER:
             pytest.skip("PBESv2 is not supported on OpenSSL < 3.0")
 
         if (
@@ -615,7 +629,7 @@ class TestPKCS12Creation:
 
     @pytest.mark.supported(
         only_if=lambda backend: (
-            not backend._lib.CRYPTOGRAPHY_OPENSSL_300_OR_GREATER
+            not rust_openssl.CRYPTOGRAPHY_OPENSSL_300_OR_GREATER
         ),
         skip_message="Requires OpenSSL < 3.0.0 (or Libre/Boring)",
     )
@@ -658,6 +672,24 @@ class TestPKCS12Creation:
         with pytest.raises(UnsupportedAlgorithm):
             serialize_key_and_certificates(
                 b"name", cakey, cacert, [], algorithm
+            )
+
+    @pytest.mark.supported(
+        only_if=lambda backend: backend._lib.Cryptography_HAS_PKCS12_SET_MAC,
+        skip_message="Requires OpenSSL with PKCS12_set_mac",
+    )
+    def test_set_mac_key_certificate_mismatch(self, backend):
+        cacert, _ = _load_ca(backend)
+        key = ec.generate_private_key(ec.SECP256R1())
+        encryption = (
+            serialization.PrivateFormat.PKCS12.encryption_builder()
+            .hmac_hash(hashes.SHA256())
+            .build(b"password")
+        )
+
+        with pytest.raises(ValueError):
+            serialize_key_and_certificates(
+                b"name", key, cacert, [], encryption
             )
 
 

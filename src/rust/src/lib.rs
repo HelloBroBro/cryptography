@@ -18,15 +18,18 @@ mod error;
 mod exceptions;
 pub(crate) mod oid;
 mod padding;
+mod pkcs12;
 mod pkcs7;
 pub(crate) mod types;
 mod x509;
 
 #[cfg(CRYPTOGRAPHY_OPENSSL_300_OR_GREATER)]
-#[pyo3::prelude::pyclass(frozen, module = "cryptography.hazmat.bindings._rust")]
+#[pyo3::prelude::pyclass(module = "cryptography.hazmat.bindings._rust")]
 struct LoadedProviders {
     legacy: Option<provider::Provider>,
     _default: provider::Provider,
+
+    fips: Option<provider::Provider>,
 }
 
 #[pyo3::prelude::pyfunction]
@@ -62,7 +65,11 @@ fn _initialize_providers() -> CryptographyResult<LoadedProviders> {
         None
     };
     let _default = provider::Provider::load(None, "default")?;
-    Ok(LoadedProviders { legacy, _default })
+    Ok(LoadedProviders {
+        legacy,
+        _default,
+        fips: None,
+    })
 }
 
 fn _legacy_provider_error(success: bool) -> pyo3::PyResult<()> {
@@ -74,6 +81,14 @@ fn _legacy_provider_error(success: bool) -> pyo3::PyResult<()> {
     Ok(())
 }
 
+#[cfg(CRYPTOGRAPHY_OPENSSL_300_OR_GREATER)]
+#[pyo3::prelude::pyfunction]
+fn enable_fips(providers: &mut LoadedProviders) -> CryptographyResult<()> {
+    providers.fips = Some(provider::Provider::load(None, "fips")?);
+    cryptography_openssl::fips::enable()?;
+    Ok(())
+}
+
 #[pyo3::prelude::pymodule]
 fn _rust(py: pyo3::Python<'_>, m: &pyo3::types::PyModule) -> pyo3::PyResult<()> {
     m.add_function(pyo3::wrap_pyfunction!(padding::check_pkcs7_padding, m)?)?;
@@ -82,6 +97,7 @@ fn _rust(py: pyo3::Python<'_>, m: &pyo3::types::PyModule) -> pyo3::PyResult<()> 
 
     m.add_submodule(asn1::create_submodule(py)?)?;
     m.add_submodule(pkcs7::create_submodule(py)?)?;
+    m.add_submodule(pkcs12::create_submodule(py)?)?;
     m.add_submodule(exceptions::create_submodule(py)?)?;
 
     let x509_mod = pyo3::prelude::PyModule::new(py, "x509")?;
@@ -122,6 +138,8 @@ fn _rust(py: pyo3::Python<'_>, m: &pyo3::types::PyModule) -> pyo3::PyResult<()> 
                 openssl_mod.add("_legacy_provider_loaded", false)?;
             }
             openssl_mod.add("_providers", providers)?;
+
+            openssl_mod.add_function(pyo3::wrap_pyfunction!(enable_fips, m)?)?;
         } else {
             // default value for non-openssl 3+
             openssl_mod.add("_legacy_provider_loaded", false)?;

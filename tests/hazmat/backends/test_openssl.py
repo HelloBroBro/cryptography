@@ -59,13 +59,13 @@ class TestOpenSSL:
         # Verify the correspondence between these two. And do it in a way that
         # ensures coverage.
         if version.startswith("LibreSSL"):
-            assert backend._lib.CRYPTOGRAPHY_IS_LIBRESSL
-        if backend._lib.CRYPTOGRAPHY_IS_LIBRESSL:
+            assert rust_openssl.CRYPTOGRAPHY_IS_LIBRESSL
+        if rust_openssl.CRYPTOGRAPHY_IS_LIBRESSL:
             assert version.startswith("LibreSSL")
 
         if version.startswith("BoringSSL"):
-            assert backend._lib.CRYPTOGRAPHY_IS_BORINGSSL
-        if backend._lib.CRYPTOGRAPHY_IS_BORINGSSL:
+            assert rust_openssl.CRYPTOGRAPHY_IS_BORINGSSL
+        if rust_openssl.CRYPTOGRAPHY_IS_BORINGSSL:
             assert version.startswith("BoringSSL")
 
     def test_openssl_version_number(self):
@@ -201,15 +201,6 @@ class TestOpenSSLRSA:
 
 
 class TestOpenSSLSerializationWithOpenSSL:
-    def test_unsupported_evp_pkey_type(self):
-        key = backend._lib.EVP_PKEY_new()
-        key = backend._ffi.gc(key, backend._lib.EVP_PKEY_free)
-        with raises_unsupported_algorithm(None):
-            rust_openssl.keys.private_key_from_ptr(
-                int(backend._ffi.cast("uintptr_t", key)),
-                unsafe_skip_rsa_key_validation=False,
-            )
-
     def test_very_long_pem_serialization_password(self):
         password = b"x" * 1025
 
