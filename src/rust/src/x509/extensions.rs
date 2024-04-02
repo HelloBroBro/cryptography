@@ -8,6 +8,7 @@ use crate::asn1::{py_oid_to_oid, py_uint_to_big_endian_bytes};
 use crate::error::{CryptographyError, CryptographyResult};
 use crate::x509::{certificate, sct};
 use crate::{types, x509};
+use pyo3::PyNativeType;
 
 fn encode_general_subtrees<'a>(
     py: pyo3::Python<'a>,
@@ -39,7 +40,7 @@ pub(crate) fn encode_authority_key_identifier<'a>(
     struct PyAuthorityKeyIdentifier<'a> {
         key_identifier: Option<&'a [u8]>,
         authority_cert_issuer: Option<&'a pyo3::PyAny>,
-        authority_cert_serial_number: Option<&'a pyo3::types::PyLong>,
+        authority_cert_serial_number: Option<pyo3::Bound<'a, pyo3::types::PyLong>>,
     }
     let aki = py_aki.extract::<PyAuthorityKeyIdentifier<'_>>()?;
     let authority_cert_issuer = if let Some(authority_cert_issuer) = aki.authority_cert_issuer {
@@ -139,51 +140,58 @@ fn encode_key_usage(py: pyo3::Python<'_>, ext: &pyo3::PyAny) -> CryptographyResu
         &mut bs,
         0,
         ext.getattr(pyo3::intern!(py, "digital_signature"))?
-            .is_true()?,
+            .is_truthy()?,
     );
     certificate::set_bit(
         &mut bs,
         1,
         ext.getattr(pyo3::intern!(py, "content_commitment"))?
-            .is_true()?,
+            .is_truthy()?,
     );
     certificate::set_bit(
         &mut bs,
         2,
         ext.getattr(pyo3::intern!(py, "key_encipherment"))?
-            .is_true()?,
+            .is_truthy()?,
     );
     certificate::set_bit(
         &mut bs,
         3,
         ext.getattr(pyo3::intern!(py, "data_encipherment"))?
-            .is_true()?,
+            .is_truthy()?,
     );
     certificate::set_bit(
         &mut bs,
         4,
-        ext.getattr(pyo3::intern!(py, "key_agreement"))?.is_true()?,
+        ext.getattr(pyo3::intern!(py, "key_agreement"))?
+            .is_truthy()?,
     );
     certificate::set_bit(
         &mut bs,
         5,
-        ext.getattr(pyo3::intern!(py, "key_cert_sign"))?.is_true()?,
+        ext.getattr(pyo3::intern!(py, "key_cert_sign"))?
+            .is_truthy()?,
     );
     certificate::set_bit(
         &mut bs,
         6,
-        ext.getattr(pyo3::intern!(py, "crl_sign"))?.is_true()?,
+        ext.getattr(pyo3::intern!(py, "crl_sign"))?.is_truthy()?,
     );
-    if ext.getattr(pyo3::intern!(py, "key_agreement"))?.is_true()? {
+    if ext
+        .getattr(pyo3::intern!(py, "key_agreement"))?
+        .is_truthy()?
+    {
         certificate::set_bit(
             &mut bs,
             7,
-            ext.getattr(pyo3::intern!(py, "encipher_only"))?.is_true()?,
+            ext.getattr(pyo3::intern!(py, "encipher_only"))?
+                .is_truthy()?,
         );
         certificate::set_bit(
             &mut bs,
             8,
-            ext.getattr(pyo3::intern!(py, "decipher_only"))?.is_true()?,
+            ext.getattr(pyo3::intern!(py, "decipher_only"))?
+                .is_truthy()?,
         );
     }
     let (bits, unused_bits) = if bs[1] == 0 {
@@ -208,7 +216,7 @@ fn encode_certificate_policies(
         let py_policy_info = py_policy_info?;
         let py_policy_qualifiers =
             py_policy_info.getattr(pyo3::intern!(py, "policy_qualifiers"))?;
-        let qualifiers = if py_policy_qualifiers.is_true()? {
+        let qualifiers = if py_policy_qualifiers.is_truthy()? {
             let mut qualifiers = vec![];
             for py_qualifier in py_policy_qualifiers.iter()? {
                 let py_qualifier = py_qualifier?;
@@ -228,13 +236,13 @@ fn encode_certificate_policies(
                     }
                 } else {
                     let py_notice = py_qualifier.getattr(pyo3::intern!(py, "notice_reference"))?;
-                    let notice_ref = if py_notice.is_true()? {
+                    let notice_ref = if py_notice.is_truthy()? {
                         let mut notice_numbers = vec![];
                         for py_num in py_notice
                             .getattr(pyo3::intern!(py, "notice_numbers"))?
                             .iter()?
                         {
-                            let bytes = py_uint_to_big_endian_bytes(ext.py(), py_num?.downcast()?)?;
+                            let bytes = py_uint_to_big_endian_bytes(ext.py(), py_num?.extract()?)?;
                             notice_numbers.push(asn1::BigUint::new(bytes).unwrap());
                         }
 
@@ -255,7 +263,7 @@ fn encode_certificate_policies(
                     };
                     let py_explicit_text =
                         py_qualifier.getattr(pyo3::intern!(py, "explicit_text"))?;
-                    let explicit_text = if py_explicit_text.is_true()? {
+                    let explicit_text = if py_explicit_text.is_truthy()? {
                         Some(extensions::DisplayText::Utf8String(asn1::Utf8String::new(
                             py_explicit_text.extract()?,
                         )))
@@ -296,7 +304,7 @@ fn encode_issuing_distribution_point(
 ) -> CryptographyResult<Vec<u8>> {
     let only_some_reasons = if ext
         .getattr(pyo3::intern!(py, "only_some_reasons"))?
-        .is_true()?
+        .is_truthy()?
     {
         let py_reasons = ext.getattr(pyo3::intern!(py, "only_some_reasons"))?;
         let reasons = certificate::encode_distribution_point_reasons(ext.py(), py_reasons)?;
@@ -304,13 +312,16 @@ fn encode_issuing_distribution_point(
     } else {
         None
     };
-    let distribution_point = if ext.getattr(pyo3::intern!(py, "full_name"))?.is_true()? {
+    let distribution_point = if ext.getattr(pyo3::intern!(py, "full_name"))?.is_truthy()? {
         let py_full_name = ext.getattr(pyo3::intern!(py, "full_name"))?;
         let gns = x509::common::encode_general_names(ext.py(), py_full_name)?;
         Some(extensions::DistributionPointName::FullName(
             common::Asn1ReadableOrWritable::new_write(asn1::SequenceOfWriter::new(gns)),
         ))
-    } else if ext.getattr(pyo3::intern!(py, "relative_name"))?.is_true()? {
+    } else if ext
+        .getattr(pyo3::intern!(py, "relative_name"))?
+        .is_truthy()?
+    {
         let mut name_entries = vec![];
         for py_name_entry in ext.getattr(pyo3::intern!(py, "relative_name"))?.iter()? {
             name_entries.push(x509::common::encode_name_entry(ext.py(), py_name_entry?)?);
@@ -434,7 +445,7 @@ pub(crate) fn encode_extension(
             let intval = ext
                 .getattr(pyo3::intern!(py, "skip_certs"))?
                 .downcast::<pyo3::types::PyLong>()?;
-            let bytes = py_uint_to_big_endian_bytes(ext.py(), intval)?;
+            let bytes = py_uint_to_big_endian_bytes(ext.py(), intval.as_borrowed().to_owned())?;
             Ok(Some(asn1::write_single(
                 &asn1::BigUint::new(bytes).unwrap(),
             )?))
@@ -481,7 +492,7 @@ pub(crate) fn encode_extension(
             let intval = ext
                 .getattr(pyo3::intern!(py, "crl_number"))?
                 .downcast::<pyo3::types::PyLong>()?;
-            let bytes = py_uint_to_big_endian_bytes(ext.py(), intval)?;
+            let bytes = py_uint_to_big_endian_bytes(ext.py(), intval.as_borrowed().to_owned())?;
             Ok(Some(asn1::write_single(
                 &asn1::BigUint::new(bytes).unwrap(),
             )?))

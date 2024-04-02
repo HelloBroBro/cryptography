@@ -207,7 +207,7 @@ impl CertificateRevocationList {
     fn signature_algorithm_parameters<'p>(
         &'p self,
         py: pyo3::Python<'p>,
-    ) -> CryptographyResult<&'p pyo3::PyAny> {
+    ) -> CryptographyResult<pyo3::Bound<'p, pyo3::PyAny>> {
         sign::identify_signature_algorithm_parameters(
             py,
             &self.owned.borrow_dependent().signature_algorithm,
@@ -375,7 +375,7 @@ impl CertificateRevocationList {
     fn get_revoked_certificate_by_serial_number(
         &self,
         py: pyo3::Python<'_>,
-        serial: &pyo3::types::PyLong,
+        serial: pyo3::Bound<'_, pyo3::types::PyLong>,
     ) -> pyo3::PyResult<Option<RevokedCertificate>> {
         let serial_bytes = py_uint_to_big_endian_bytes(py, serial)?;
         let owned = OwnedRevokedCertificate::try_new(Arc::clone(&self.owned), |v| {
