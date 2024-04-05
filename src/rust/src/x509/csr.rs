@@ -58,7 +58,7 @@ impl CertificateSigningRequest {
     fn public_key_algorithm_oid<'p>(
         &self,
         py: pyo3::Python<'p>,
-    ) -> pyo3::PyResult<&'p pyo3::PyAny> {
+    ) -> pyo3::PyResult<pyo3::Bound<'p, pyo3::PyAny>> {
         oid_to_py_oid(
             py,
             self.raw.borrow_dependent().csr_info.spki.algorithm.oid(),
@@ -96,7 +96,10 @@ impl CertificateSigningRequest {
     }
 
     #[getter]
-    fn signature_algorithm_oid<'p>(&self, py: pyo3::Python<'p>) -> pyo3::PyResult<&'p pyo3::PyAny> {
+    fn signature_algorithm_oid<'p>(
+        &self,
+        py: pyo3::Python<'p>,
+    ) -> pyo3::PyResult<pyo3::Bound<'p, pyo3::PyAny>> {
         oid_to_py_oid(py, self.raw.borrow_dependent().signature_alg.oid())
     }
 
@@ -115,7 +118,7 @@ impl CertificateSigningRequest {
         &self,
         py: pyo3::Python<'p>,
         encoding: &'p pyo3::PyAny,
-    ) -> CryptographyResult<&'p pyo3::types::PyBytes> {
+    ) -> CryptographyResult<pyo3::Bound<'p, pyo3::types::PyBytes>> {
         let result = asn1::write_single(self.raw.borrow_dependent())?;
 
         encode_der_data(py, "CERTIFICATE REQUEST".to_string(), result, encoding)
@@ -124,13 +127,13 @@ impl CertificateSigningRequest {
     fn get_attribute_for_oid<'p>(
         &self,
         py: pyo3::Python<'p>,
-        oid: &pyo3::PyAny,
+        oid: pyo3::Bound<'p, pyo3::PyAny>,
     ) -> pyo3::PyResult<&'p pyo3::PyAny> {
         let warning_cls = types::DEPRECATED_IN_36.get(py)?;
         let warning_msg = "CertificateSigningRequest.get_attribute_for_oid has been deprecated. Please switch to request.attributes.get_attribute_for_oid.";
         pyo3::PyErr::warn(py, warning_cls, warning_msg, 1)?;
 
-        let rust_oid = py_oid_to_oid(oid)?;
+        let rust_oid = py_oid_to_oid(oid.clone())?;
         for attribute in self
             .raw
             .borrow_dependent()
@@ -210,7 +213,7 @@ impl CertificateSigningRequest {
             })?;
 
         x509::parse_and_cache_extensions(py, &self.cached_extensions, &raw_exts, |ext| {
-            certificate::parse_cert_ext(py, ext)
+            certificate::parse_cert_ext(py, ext).map(|x| x.map(|y| y.into_gil_ref()))
         })
     }
 
@@ -235,7 +238,7 @@ impl CertificateSigningRequest {
 fn load_pem_x509_csr(
     py: pyo3::Python<'_>,
     data: &[u8],
-    backend: Option<&pyo3::PyAny>,
+    backend: Option<pyo3::Bound<'_, pyo3::PyAny>>,
 ) -> CryptographyResult<CertificateSigningRequest> {
     let _ = backend;
 
@@ -257,7 +260,7 @@ fn load_pem_x509_csr(
 fn load_der_x509_csr(
     py: pyo3::Python<'_>,
     data: pyo3::Py<pyo3::types::PyBytes>,
-    backend: Option<&pyo3::PyAny>,
+    backend: Option<pyo3::Bound<'_, pyo3::PyAny>>,
 ) -> CryptographyResult<CertificateSigningRequest> {
     let _ = backend;
 
@@ -314,7 +317,8 @@ fn create_x509_csr(
     }
 
     for py_attr in builder.getattr(pyo3::intern!(py, "_attributes"))?.iter()? {
-        let (py_oid, value, tag): (&pyo3::PyAny, &[u8], Option<u8>) = py_attr?.extract()?;
+        let (py_oid, value, tag): (pyo3::Bound<'_, pyo3::PyAny>, &[u8], Option<u8>) =
+            py_attr?.extract()?;
         let oid = py_oid_to_oid(py_oid)?;
         let tag = if let Some(tag) = tag {
             asn1::Tag::from_bytes(&[tag])?.0

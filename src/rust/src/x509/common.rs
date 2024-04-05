@@ -7,8 +7,9 @@ use cryptography_x509::extensions::{
     AccessDescription, DuplicateExtensionsError, Extension, Extensions, RawExtensions,
 };
 use cryptography_x509::name::{GeneralName, Name, NameReadable, OtherName, UnvalidatedIA5String};
+use pyo3::prelude::PyAnyMethods;
 use pyo3::types::IntoPyDict;
-use pyo3::{IntoPy, ToPyObject};
+use pyo3::{IntoPy, PyNativeType, ToPyObject};
 
 use crate::asn1::{oid_to_py_oid, py_oid_to_oid};
 use crate::error::{CryptographyError, CryptographyResult};
@@ -75,7 +76,11 @@ pub(crate) fn encode_name_entry<'p>(
             .getattr(pyo3::intern!(py, "value"))?
             .extract()?
     };
-    let oid = py_oid_to_oid(py_name_entry.getattr(pyo3::intern!(py, "oid"))?)?;
+    let py_oid = py_name_entry
+        .getattr(pyo3::intern!(py, "oid"))?
+        .as_borrowed()
+        .to_owned();
+    let oid = py_oid_to_oid(py_oid)?;
 
     Ok(AttributeTypeValue {
         type_id: oid,
@@ -124,8 +129,12 @@ pub(crate) fn encode_general_name<'a>(
         let name = encode_name(py, gn_value)?;
         Ok(GeneralName::DirectoryName(name))
     } else if gn_type.is(types::OTHER_NAME.get(py)?) {
+        let py_oid = gn
+            .getattr(pyo3::intern!(py, "type_id"))?
+            .as_borrowed()
+            .to_owned();
         Ok(GeneralName::OtherName(OtherName {
-            type_id: py_oid_to_oid(gn.getattr(pyo3::intern!(py, "type_id"))?)?,
+            type_id: py_oid_to_oid(py_oid)?,
             value: asn1::parse_single(gn_value.extract::<&[u8]>()?).map_err(|e| {
                 pyo3::exceptions::PyValueError::new_err(format!(
                     "OtherName value must be valid DER: {e:?}"
@@ -142,7 +151,7 @@ pub(crate) fn encode_general_name<'a>(
                 .extract::<&[u8]>()?,
         ))
     } else if gn_type.is(types::REGISTERED_ID.get(py)?) {
-        let oid = py_oid_to_oid(gn_value)?;
+        let oid = py_oid_to_oid(gn_value.as_borrowed().to_owned())?;
         Ok(GeneralName::RegisteredID(oid))
     } else {
         Err(CryptographyError::from(
@@ -158,7 +167,11 @@ pub(crate) fn encode_access_descriptions<'a>(
     let mut ads = vec![];
     for py_ad in py_ads.iter()? {
         let py_ad = py_ad?;
-        let access_method = py_oid_to_oid(py_ad.getattr(pyo3::intern!(py, "access_method"))?)?;
+        let py_oid = py_ad
+            .getattr(pyo3::intern!(py, "access_method"))?
+            .as_borrowed()
+            .to_owned();
+        let access_method = py_oid_to_oid(py_oid)?;
         let access_location =
             encode_general_name(py, py_ad.getattr(pyo3::intern!(py, "access_location"))?)?;
         ads.push(AccessDescription {
@@ -199,27 +212,27 @@ fn parse_name_attribute(
     let py_tag = types::ASN1_TYPE_TO_ENUM.get(py)?.get_item(tag_val)?;
     let py_data = match attribute.value.tag().as_u8() {
         // BitString tag value
-        Some(3) => pyo3::types::PyBytes::new(py, attribute.value.data()),
+        Some(3) => pyo3::types::PyBytes::new_bound(py, attribute.value.data()).into_any(),
         // BMPString tag value
         Some(30) => {
-            let py_bytes = pyo3::types::PyBytes::new(py, attribute.value.data());
+            let py_bytes = pyo3::types::PyBytes::new_bound(py, attribute.value.data());
             py_bytes.call_method1(pyo3::intern!(py, "decode"), ("utf_16_be",))?
         }
         // UniversalString
         Some(28) => {
-            let py_bytes = pyo3::types::PyBytes::new(py, attribute.value.data());
+            let py_bytes = pyo3::types::PyBytes::new_bound(py, attribute.value.data());
             py_bytes.call_method1(pyo3::intern!(py, "decode"), ("utf_32_be",))?
         }
         _ => {
             let parsed = std::str::from_utf8(attribute.value.data())
                 .map_err(|_| asn1::ParseError::new(asn1::ParseErrorKind::InvalidValue))?;
-            pyo3::types::PyString::new(py, parsed)
+            pyo3::types::PyString::new_bound(py, parsed).into_any()
         }
     };
-    let kwargs = [(pyo3::intern!(py, "_validate"), false)].into_py_dict(py);
+    let kwargs = [(pyo3::intern!(py, "_validate"), false)].into_py_dict_bound(py);
     Ok(types::NAME_ATTRIBUTE
-        .get(py)?
-        .call((oid, py_data, py_tag), Some(kwargs))?
+        .get_bound(py)?
+        .call((oid, py_data, py_tag), Some(&kwargs))?
         .to_object(py))
 }
 
@@ -246,33 +259,36 @@ pub(crate) fn parse_general_name(
         GeneralName::OtherName(data) => {
             let oid = oid_to_py_oid(py, &data.type_id)?.to_object(py);
             types::OTHER_NAME
-                .get(py)?
+                .get_bound(py)?
                 .call1((oid, data.value.full_data()))?
                 .to_object(py)
         }
         GeneralName::RFC822Name(data) => types::RFC822_NAME
-            .get(py)?
+            .get_bound(py)?
             .call_method1(pyo3::intern!(py, "_init_without_validation"), (data.0,))?
             .to_object(py),
         GeneralName::DNSName(data) => types::DNS_NAME
-            .get(py)?
+            .get_bound(py)?
             .call_method1(pyo3::intern!(py, "_init_without_validation"), (data.0,))?
             .to_object(py),
         GeneralName::DirectoryName(data) => {
             let py_name = parse_name(py, data.unwrap_read())?;
             types::DIRECTORY_NAME
-                .get(py)?
+                .get_bound(py)?
                 .call1((py_name,))?
                 .to_object(py)
         }
         GeneralName::UniformResourceIdentifier(data) => types::UNIFORM_RESOURCE_IDENTIFIER
-            .get(py)?
+            .get_bound(py)?
             .call_method1(pyo3::intern!(py, "_init_without_validation"), (data.0,))?
             .to_object(py),
         GeneralName::IPAddress(data) => {
             if data.len() == 4 || data.len() == 16 {
                 let addr = types::IPADDRESS_IPADDRESS.get(py)?.call1((data,))?;
-                types::IP_ADDRESS.get(py)?.call1((addr,))?.to_object(py)
+                types::IP_ADDRESS
+                    .get_bound(py)?
+                    .call1((addr,))?
+                    .to_object(py)
             } else {
                 // if it's not an IPv4 or IPv6 we assume it's an IPNetwork and
                 // verify length in this function.
@@ -384,7 +400,7 @@ pub(crate) fn parse_and_cache_extensions<
                     Some(e) => e,
                     None => types::UNRECOGNIZED_EXTENSION
                         .get(py)?
-                        .call1((oid_obj, raw_ext.extn_value))?,
+                        .call1((oid_obj.clone(), raw_ext.extn_value))?,
                 };
                 let ext_obj =
                     types::EXTENSION
@@ -412,7 +428,11 @@ pub(crate) fn encode_extensions<
     let mut exts = vec![];
     for py_ext in py_exts.iter()? {
         let py_ext = py_ext?;
-        let oid = py_oid_to_oid(py_ext.getattr(pyo3::intern!(py, "oid"))?)?;
+        let py_oid = py_ext
+            .getattr(pyo3::intern!(py, "oid"))?
+            .as_borrowed()
+            .to_owned();
+        let oid = py_oid_to_oid(py_oid)?;
 
         let ext_val = py_ext.getattr(pyo3::intern!(py, "value"))?;
         if ext_val.is_instance(types::UNRECOGNIZED_EXTENSION.get(py)?)? {
@@ -453,11 +473,11 @@ pub(crate) fn encode_extensions<
 #[pyo3::prelude::pyfunction]
 fn encode_extension_value<'p>(
     py: pyo3::Python<'p>,
-    py_ext: &'p pyo3::PyAny,
+    py_ext: pyo3::Bound<'p, pyo3::PyAny>,
 ) -> pyo3::PyResult<&'p pyo3::types::PyBytes> {
     let oid = py_oid_to_oid(py_ext.getattr(pyo3::intern!(py, "oid"))?)?;
 
-    if let Some(data) = x509::extensions::encode_extension(py, &oid, py_ext)? {
+    if let Some(data) = x509::extensions::encode_extension(py, &oid, py_ext.into_gil_ref())? {
         // TODO: extra copy
         let py_data = pyo3::types::PyBytes::new(py, &data);
         return Ok(py_data);

@@ -96,17 +96,17 @@ fn _rust(py: pyo3::Python<'_>, m: &pyo3::types::PyModule) -> pyo3::PyResult<()> 
     m.add_function(pyo3::wrap_pyfunction!(padding::check_ansix923_padding, m)?)?;
     m.add_class::<oid::ObjectIdentifier>()?;
 
-    m.add_submodule(asn1::create_submodule(py)?)?;
+    m.add_submodule(asn1::create_submodule(py)?.into_gil_ref())?;
     m.add_submodule(pkcs7::create_submodule(py)?)?;
-    m.add_submodule(pkcs12::create_submodule(py)?)?;
-    m.add_submodule(exceptions::create_submodule(py)?)?;
+    m.add_submodule(pkcs12::create_submodule(py)?.into_gil_ref())?;
+    m.add_submodule(exceptions::create_submodule(py)?.into_gil_ref())?;
 
     let x509_mod = pyo3::prelude::PyModule::new(py, "x509")?;
     crate::x509::certificate::add_to_module(x509_mod)?;
     crate::x509::common::add_to_module(x509_mod)?;
     crate::x509::crl::add_to_module(x509_mod)?;
     crate::x509::csr::add_to_module(x509_mod)?;
-    crate::x509::sct::add_to_module(x509_mod)?;
+    crate::x509::sct::add_to_module(&x509_mod.as_borrowed())?;
     crate::x509::verify::add_to_module(x509_mod)?;
     m.add_submodule(x509_mod)?;
 

@@ -7,16 +7,19 @@ use cryptography_x509::certificate::Certificate;
 use cryptography_x509::common::{DssSignature, SubjectPublicKeyInfo, Time};
 use cryptography_x509::name::Name;
 use pyo3::prelude::PyAnyMethods;
+use pyo3::prelude::PyModuleMethods;
 use pyo3::types::IntoPyDict;
 use pyo3::ToPyObject;
 
 use crate::error::{CryptographyError, CryptographyResult};
 use crate::types;
 
-pub(crate) fn py_oid_to_oid(py_oid: &pyo3::PyAny) -> pyo3::PyResult<asn1::ObjectIdentifier> {
+pub(crate) fn py_oid_to_oid(
+    py_oid: pyo3::Bound<'_, pyo3::PyAny>,
+) -> pyo3::PyResult<asn1::ObjectIdentifier> {
     Ok(py_oid
-        .downcast::<pyo3::PyCell<crate::oid::ObjectIdentifier>>()?
-        .borrow()
+        .downcast::<crate::oid::ObjectIdentifier>()?
+        .get()
         .oid
         .clone())
 }
@@ -24,30 +27,33 @@ pub(crate) fn py_oid_to_oid(py_oid: &pyo3::PyAny) -> pyo3::PyResult<asn1::Object
 pub(crate) fn oid_to_py_oid<'p>(
     py: pyo3::Python<'p>,
     oid: &asn1::ObjectIdentifier,
-) -> pyo3::PyResult<&'p pyo3::PyAny> {
-    Ok(pyo3::Py::new(py, crate::oid::ObjectIdentifier { oid: oid.clone() })?.into_ref(py))
+) -> pyo3::PyResult<pyo3::Bound<'p, pyo3::PyAny>> {
+    Ok(pyo3::Bound::new(py, crate::oid::ObjectIdentifier { oid: oid.clone() })?.into_any())
 }
 
 #[pyo3::prelude::pyfunction]
-fn parse_spki_for_data(
-    py: pyo3::Python<'_>,
+fn parse_spki_for_data<'p>(
+    py: pyo3::Python<'p>,
     data: &[u8],
-) -> Result<pyo3::PyObject, CryptographyError> {
+) -> Result<pyo3::Bound<'p, pyo3::types::PyBytes>, CryptographyError> {
     let spki = asn1::parse_single::<SubjectPublicKeyInfo<'_>>(data)?;
     if spki.subject_public_key.padding_bits() != 0 {
         return Err(pyo3::exceptions::PyValueError::new_err("Invalid public key encoding").into());
     }
 
-    Ok(pyo3::types::PyBytes::new(py, spki.subject_public_key.as_bytes()).to_object(py))
+    Ok(pyo3::types::PyBytes::new_bound(
+        py,
+        spki.subject_public_key.as_bytes(),
+    ))
 }
 
 pub(crate) fn big_byte_slice_to_py_int<'p>(
     py: pyo3::Python<'p>,
     v: &'_ [u8],
-) -> pyo3::PyResult<&'p pyo3::PyAny> {
-    let int_type = py.get_type::<pyo3::types::PyLong>();
-    let kwargs = [("signed", true)].into_py_dict(py);
-    int_type.call_method(pyo3::intern!(py, "from_bytes"), (v, "big"), Some(kwargs))
+) -> pyo3::PyResult<pyo3::Bound<'p, pyo3::PyAny>> {
+    let int_type = py.get_type_bound::<pyo3::types::PyLong>();
+    let kwargs = [("signed", true)].into_py_dict_bound(py);
+    int_type.call_method(pyo3::intern!(py, "from_bytes"), (v, "big"), Some(&kwargs))
 }
 
 #[pyo3::prelude::pyfunction]
@@ -92,11 +98,11 @@ pub(crate) fn encode_der_data<'p>(
     pem_tag: String,
     data: Vec<u8>,
     encoding: &'p pyo3::PyAny,
-) -> CryptographyResult<&'p pyo3::types::PyBytes> {
-    if encoding.is(types::ENCODING_DER.get(py)?) {
-        Ok(pyo3::types::PyBytes::new(py, &data))
-    } else if encoding.is(types::ENCODING_PEM.get(py)?) {
-        Ok(pyo3::types::PyBytes::new(
+) -> CryptographyResult<pyo3::Bound<'p, pyo3::types::PyBytes>> {
+    if encoding.is(&types::ENCODING_DER.get_bound(py)?) {
+        Ok(pyo3::types::PyBytes::new_bound(py, &data))
+    } else if encoding.is(&types::ENCODING_PEM.get_bound(py)?) {
+        Ok(pyo3::types::PyBytes::new_bound(
             py,
             &pem::encode_config(
                 &pem::Pem::new(pem_tag, data),
@@ -113,17 +119,17 @@ pub(crate) fn encode_der_data<'p>(
 }
 
 #[pyo3::prelude::pyfunction]
-fn encode_dss_signature(
-    py: pyo3::Python<'_>,
+fn encode_dss_signature<'p>(
+    py: pyo3::Python<'p>,
     r: pyo3::Bound<'_, pyo3::types::PyLong>,
     s: pyo3::Bound<'_, pyo3::types::PyLong>,
-) -> CryptographyResult<pyo3::PyObject> {
+) -> CryptographyResult<pyo3::Bound<'p, pyo3::types::PyBytes>> {
     let sig = DssSignature {
         r: asn1::BigUint::new(py_uint_to_big_endian_bytes(py, r)?).unwrap(),
         s: asn1::BigUint::new(py_uint_to_big_endian_bytes(py, s)?).unwrap(),
     };
     let result = asn1::write_single(&sig)?;
-    Ok(pyo3::types::PyBytes::new(py, &result).to_object(py))
+    Ok(pyo3::types::PyBytes::new_bound(py, &result))
 }
 
 #[pyo3::prelude::pyclass(frozen, module = "cryptography.hazmat.bindings._rust.asn1")]
@@ -168,14 +174,19 @@ fn test_parse_certificate(data: &[u8]) -> Result<TestCertificate, CryptographyEr
     })
 }
 
-pub(crate) fn create_submodule(py: pyo3::Python<'_>) -> pyo3::PyResult<&pyo3::prelude::PyModule> {
-    let submod = pyo3::prelude::PyModule::new(py, "asn1")?;
-    submod.add_function(pyo3::wrap_pyfunction!(parse_spki_for_data, submod)?)?;
+pub(crate) fn create_submodule(
+    py: pyo3::Python<'_>,
+) -> pyo3::PyResult<pyo3::Bound<'_, pyo3::prelude::PyModule>> {
+    let submod = pyo3::prelude::PyModule::new_bound(py, "asn1")?;
+    submod.add_function(pyo3::wrap_pyfunction_bound!(parse_spki_for_data, &submod)?)?;
 
-    submod.add_function(pyo3::wrap_pyfunction!(decode_dss_signature, submod)?)?;
-    submod.add_function(pyo3::wrap_pyfunction!(encode_dss_signature, submod)?)?;
+    submod.add_function(pyo3::wrap_pyfunction_bound!(decode_dss_signature, &submod)?)?;
+    submod.add_function(pyo3::wrap_pyfunction_bound!(encode_dss_signature, &submod)?)?;
 
-    submod.add_function(pyo3::wrap_pyfunction!(test_parse_certificate, submod)?)?;
+    submod.add_function(pyo3::wrap_pyfunction_bound!(
+        test_parse_certificate,
+        &submod
+    )?)?;
 
     Ok(submod)
 }

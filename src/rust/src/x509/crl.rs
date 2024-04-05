@@ -13,7 +13,7 @@ use cryptography_x509::{
     },
     name, oid,
 };
-use pyo3::{IntoPy, ToPyObject};
+use pyo3::{IntoPy, PyNativeType, ToPyObject};
 
 use crate::asn1::{
     big_byte_slice_to_py_int, encode_der_data, oid_to_py_oid, py_uint_to_big_endian_bytes,
@@ -27,7 +27,7 @@ use crate::{exceptions, types, x509};
 fn load_der_x509_crl(
     py: pyo3::Python<'_>,
     data: pyo3::Py<pyo3::types::PyBytes>,
-    backend: Option<&pyo3::PyAny>,
+    backend: Option<pyo3::Bound<'_, pyo3::PyAny>>,
 ) -> Result<CertificateRevocationList, CryptographyError> {
     let _ = backend;
 
@@ -56,7 +56,7 @@ fn load_der_x509_crl(
 fn load_pem_x509_crl(
     py: pyo3::Python<'_>,
     data: &[u8],
-    backend: Option<&pyo3::PyAny>,
+    backend: Option<pyo3::Bound<'_, pyo3::PyAny>>,
 ) -> Result<CertificateRevocationList, CryptographyError> {
     let _ = backend;
 
@@ -178,13 +178,16 @@ impl CertificateRevocationList {
     ) -> pyo3::PyResult<&'p pyo3::PyAny> {
         let data = self.public_bytes_der()?;
 
-        let mut h = Hash::new(py, algorithm, None)?;
+        let mut h = Hash::new(py, &algorithm.as_borrowed(), None)?;
         h.update_bytes(&data)?;
-        Ok(h.finalize(py)?)
+        Ok(h.finalize(py)?.into_gil_ref())
     }
 
     #[getter]
-    fn signature_algorithm_oid<'p>(&self, py: pyo3::Python<'p>) -> pyo3::PyResult<&'p pyo3::PyAny> {
+    fn signature_algorithm_oid<'p>(
+        &self,
+        py: pyo3::Python<'p>,
+    ) -> pyo3::PyResult<pyo3::Bound<'p, pyo3::PyAny>> {
         oid_to_py_oid(py, self.owned.borrow_dependent().signature_algorithm.oid())
     }
 
@@ -232,7 +235,7 @@ impl CertificateRevocationList {
         &self,
         py: pyo3::Python<'p>,
         encoding: &'p pyo3::PyAny,
-    ) -> CryptographyResult<&'p pyo3::types::PyBytes> {
+    ) -> CryptographyResult<pyo3::Bound<'p, pyo3::types::PyBytes>> {
         let result = asn1::write_single(&self.owned.borrow_dependent())?;
 
         encode_der_data(py, "X509 CRL".to_string(), result, encoding)
@@ -336,9 +339,9 @@ impl CertificateRevocationList {
                         types::AUTHORITY_INFORMATION_ACCESS.get(py)?.call1((ads,))?,
                     ))
                 }
-                oid::AUTHORITY_KEY_IDENTIFIER_OID => {
-                    Ok(Some(certificate::parse_authority_key_identifier(py, ext)?))
-                }
+                oid::AUTHORITY_KEY_IDENTIFIER_OID => Ok(Some(
+                    certificate::parse_authority_key_identifier(py, ext)?.into_gil_ref(),
+                )),
                 oid::ISSUING_DISTRIBUTION_POINT_OID => {
                     let idp = ext.value::<crl::IssuingDistributionPoint<'_>>()?;
                     let (full_name, relative_name) = match idp.distribution_point {
@@ -518,7 +521,10 @@ struct RevokedCertificate {
 #[pyo3::prelude::pymethods]
 impl RevokedCertificate {
     #[getter]
-    fn serial_number<'p>(&self, py: pyo3::Python<'p>) -> pyo3::PyResult<&'p pyo3::PyAny> {
+    fn serial_number<'p>(
+        &self,
+        py: pyo3::Python<'p>,
+    ) -> pyo3::PyResult<pyo3::Bound<'p, pyo3::PyAny>> {
         big_byte_slice_to_py_int(
             py,
             self.owned.borrow_dependent().user_certificate.as_bytes(),
@@ -632,7 +638,10 @@ fn create_x509_crl(
         revoked_certs.push(crl::RevokedCertificate {
             user_certificate: asn1::BigUint::new(py_uint_to_big_endian_bytes(py, serial_number)?)
                 .unwrap(),
-            revocation_date: x509::certificate::time_from_py(py, py_revocation_date)?,
+            revocation_date: x509::certificate::time_from_py(
+                py,
+                &py_revocation_date.as_borrowed(),
+            )?,
             raw_crl_entry_extensions: x509::common::encode_extensions(
                 py,
                 py_revoked_cert.getattr(pyo3::intern!(py, "extensions"))?,
@@ -648,8 +657,11 @@ fn create_x509_crl(
         version: Some(1),
         signature: sigalg.clone(),
         issuer: x509::common::encode_name(py, py_issuer_name)?,
-        this_update: x509::certificate::time_from_py(py, py_this_update)?,
-        next_update: Some(x509::certificate::time_from_py(py, py_next_update)?),
+        this_update: x509::certificate::time_from_py(py, &py_this_update.as_borrowed())?,
+        next_update: Some(x509::certificate::time_from_py(
+            py,
+            &py_next_update.as_borrowed(),
+        )?),
         revoked_certificates: if revoked_certs.is_empty() {
             None
         } else {

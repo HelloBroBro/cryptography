@@ -95,12 +95,12 @@ impl Ed448PrivateKey {
     }
 
     fn private_bytes<'p>(
-        slf: &pyo3::PyCell<Self>,
+        slf: &pyo3::Bound<'p, Self>,
         py: pyo3::Python<'p>,
-        encoding: &pyo3::PyAny,
-        format: &pyo3::PyAny,
-        encryption_algorithm: &pyo3::PyAny,
-    ) -> CryptographyResult<&'p pyo3::types::PyBytes> {
+        encoding: &pyo3::Bound<'p, pyo3::PyAny>,
+        format: &pyo3::Bound<'p, pyo3::PyAny>,
+        encryption_algorithm: &pyo3::Bound<'p, pyo3::PyAny>,
+    ) -> CryptographyResult<pyo3::Bound<'p, pyo3::types::PyBytes>> {
         utils::pkey_private_bytes(
             py,
             slf,
@@ -138,11 +138,11 @@ impl Ed448PublicKey {
     }
 
     fn public_bytes<'p>(
-        slf: &pyo3::PyCell<Self>,
+        slf: &pyo3::Bound<'p, Self>,
         py: pyo3::Python<'p>,
-        encoding: &pyo3::PyAny,
-        format: &pyo3::PyAny,
-    ) -> CryptographyResult<&'p pyo3::types::PyBytes> {
+        encoding: &pyo3::Bound<'p, pyo3::PyAny>,
+        format: &pyo3::Bound<'p, pyo3::PyAny>,
+    ) -> CryptographyResult<pyo3::Bound<'p, pyo3::types::PyBytes>> {
         utils::pkey_public_bytes(py, slf, &slf.borrow().pkey, encoding, format, true, true)
     }
 

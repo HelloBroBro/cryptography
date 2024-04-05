@@ -8,6 +8,7 @@ use crate::asn1::{py_oid_to_oid, py_uint_to_big_endian_bytes};
 use crate::error::{CryptographyError, CryptographyResult};
 use crate::x509::{certificate, sct};
 use crate::{types, x509};
+use pyo3::prelude::PyAnyMethods;
 use pyo3::PyNativeType;
 
 fn encode_general_subtrees<'a>(
@@ -106,7 +107,8 @@ pub(crate) fn encode_distribution_points<'p>(
             None
         };
         let reasons = if let Some(py_reasons) = py_dp.reasons {
-            let reasons = certificate::encode_distribution_point_reasons(py, py_reasons)?;
+            let reasons =
+                certificate::encode_distribution_point_reasons(py, &py_reasons.as_borrowed())?;
             Some(common::Asn1ReadableOrWritable::new_write(reasons))
         } else {
             None
@@ -289,7 +291,7 @@ fn encode_certificate_policies(
         };
         let py_policy_id = py_policy_info.getattr(pyo3::intern!(py, "policy_identifier"))?;
         policy_informations.push(extensions::PolicyInformation {
-            policy_identifier: py_oid_to_oid(py_policy_id)?,
+            policy_identifier: py_oid_to_oid(py_policy_id.as_borrowed().to_owned())?,
             policy_qualifiers: qualifiers,
         });
     }
@@ -307,7 +309,8 @@ fn encode_issuing_distribution_point(
         .is_truthy()?
     {
         let py_reasons = ext.getattr(pyo3::intern!(py, "only_some_reasons"))?;
-        let reasons = certificate::encode_distribution_point_reasons(ext.py(), py_reasons)?;
+        let reasons =
+            certificate::encode_distribution_point_reasons(ext.py(), &py_reasons.as_borrowed())?;
         Some(common::Asn1ReadableOrWritable::new_write(reasons))
     } else {
         None
@@ -353,7 +356,7 @@ fn encode_issuing_distribution_point(
 fn encode_oid_sequence(ext: &pyo3::PyAny) -> CryptographyResult<Vec<u8>> {
     let mut oids = vec![];
     for el in ext.iter()? {
-        let oid = py_oid_to_oid(el?)?;
+        let oid = py_oid_to_oid(el?.as_borrowed().to_owned())?;
         oids.push(oid);
     }
     Ok(asn1::write_single(&asn1::SequenceOfWriter::new(oids))?)
@@ -375,16 +378,16 @@ fn encode_tls_features(py: pyo3::Python<'_>, ext: &pyo3::PyAny) -> CryptographyR
 fn encode_scts(ext: &pyo3::PyAny) -> CryptographyResult<Vec<u8>> {
     let mut length = 0;
     for sct in ext.iter()? {
-        let sct = sct?.downcast::<pyo3::PyCell<sct::Sct>>()?;
-        length += sct.borrow().sct_data.len() + 2;
+        let sct = sct?.as_borrowed().downcast::<sct::Sct>()?.clone();
+        length += sct.get().sct_data.len() + 2;
     }
 
     let mut result = vec![];
     result.extend_from_slice(&(length as u16).to_be_bytes());
     for sct in ext.iter()? {
-        let sct = sct?.downcast::<pyo3::PyCell<sct::Sct>>()?;
-        result.extend_from_slice(&(sct.borrow().sct_data.len() as u16).to_be_bytes());
-        result.extend_from_slice(&sct.borrow().sct_data);
+        let sct = sct?.as_borrowed().downcast::<sct::Sct>()?.clone();
+        result.extend_from_slice(&(sct.get().sct_data.len() as u16).to_be_bytes());
+        result.extend_from_slice(&sct.get().sct_data);
     }
     Ok(asn1::write_single(&result.as_slice())?)
 }
@@ -444,7 +447,9 @@ pub(crate) fn encode_extension(
         &oid::INHIBIT_ANY_POLICY_OID => {
             let intval = ext
                 .getattr(pyo3::intern!(py, "skip_certs"))?
-                .downcast::<pyo3::types::PyLong>()?;
+                .as_borrowed()
+                .downcast::<pyo3::types::PyLong>()?
+                .clone();
             let bytes = py_uint_to_big_endian_bytes(ext.py(), intval.as_borrowed().to_owned())?;
             Ok(Some(asn1::write_single(
                 &asn1::BigUint::new(bytes).unwrap(),
@@ -491,7 +496,9 @@ pub(crate) fn encode_extension(
         &oid::CRL_NUMBER_OID | &oid::DELTA_CRL_INDICATOR_OID => {
             let intval = ext
                 .getattr(pyo3::intern!(py, "crl_number"))?
-                .downcast::<pyo3::types::PyLong>()?;
+                .as_borrowed()
+                .downcast::<pyo3::types::PyLong>()?
+                .clone();
             let bytes = py_uint_to_big_endian_bytes(ext.py(), intval.as_borrowed().to_owned())?;
             Ok(Some(asn1::write_single(
                 &asn1::BigUint::new(bytes).unwrap(),
@@ -510,7 +517,7 @@ pub(crate) fn encode_extension(
         &oid::MS_CERTIFICATE_TEMPLATE => {
             let py_template_id = ext.getattr(pyo3::intern!(py, "template_id"))?;
             let mstpl = extensions::MSCertificateTemplate {
-                template_id: py_oid_to_oid(py_template_id)?,
+                template_id: py_oid_to_oid(py_template_id.as_borrowed().to_owned())?,
                 major_version: ext.getattr(pyo3::intern!(py, "major_version"))?.extract()?,
                 minor_version: ext.getattr(pyo3::intern!(py, "minor_version"))?.extract()?,
             };

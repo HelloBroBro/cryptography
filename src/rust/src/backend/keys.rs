@@ -2,6 +2,7 @@
 // 2.0, and the BSD License. See the LICENSE file in the root of this repository
 // for complete details.
 
+use pyo3::prelude::PyModuleMethods;
 use pyo3::IntoPy;
 
 use crate::backend::utils;
@@ -15,7 +16,7 @@ fn load_der_private_key(
     py: pyo3::Python<'_>,
     data: CffiBuf<'_>,
     password: Option<CffiBuf<'_>>,
-    backend: Option<&pyo3::PyAny>,
+    backend: Option<pyo3::Bound<'_, pyo3::PyAny>>,
     unsafe_skip_rsa_key_validation: bool,
 ) -> CryptographyResult<pyo3::PyObject> {
     let _ = backend;
@@ -46,7 +47,7 @@ fn load_pem_private_key(
     py: pyo3::Python<'_>,
     data: CffiBuf<'_>,
     password: Option<CffiBuf<'_>>,
-    backend: Option<&pyo3::PyAny>,
+    backend: Option<pyo3::Bound<'_, pyo3::PyAny>>,
     unsafe_skip_rsa_key_validation: bool,
 ) -> CryptographyResult<pyo3::PyObject> {
     let _ = backend;
@@ -119,7 +120,7 @@ pub(crate) fn private_key_from_pkey(
 fn load_der_public_key(
     py: pyo3::Python<'_>,
     data: CffiBuf<'_>,
-    backend: Option<&pyo3::PyAny>,
+    backend: Option<pyo3::Bound<'_, pyo3::PyAny>>,
 ) -> CryptographyResult<pyo3::PyObject> {
     let _ = backend;
     load_der_public_key_bytes(py, data.as_bytes())
@@ -147,7 +148,7 @@ pub(crate) fn load_der_public_key_bytes(
 fn load_pem_public_key(
     py: pyo3::Python<'_>,
     data: CffiBuf<'_>,
-    backend: Option<&pyo3::PyAny>,
+    backend: Option<pyo3::Bound<'_, pyo3::PyAny>>,
 ) -> CryptographyResult<pyo3::PyObject> {
     let _ = backend;
     let p = pem::parse(data.as_bytes())?;
@@ -216,13 +217,15 @@ fn public_key_from_pkey(
     }
 }
 
-pub(crate) fn create_module(py: pyo3::Python<'_>) -> pyo3::PyResult<&pyo3::prelude::PyModule> {
-    let m = pyo3::prelude::PyModule::new(py, "keys")?;
+pub(crate) fn create_module(
+    py: pyo3::Python<'_>,
+) -> pyo3::PyResult<pyo3::Bound<'_, pyo3::prelude::PyModule>> {
+    let m = pyo3::prelude::PyModule::new_bound(py, "keys")?;
 
-    m.add_function(pyo3::wrap_pyfunction!(load_pem_private_key, m)?)?;
-    m.add_function(pyo3::wrap_pyfunction!(load_der_private_key, m)?)?;
-    m.add_function(pyo3::wrap_pyfunction!(load_der_public_key, m)?)?;
-    m.add_function(pyo3::wrap_pyfunction!(load_pem_public_key, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction_bound!(load_pem_private_key, &m)?)?;
+    m.add_function(pyo3::wrap_pyfunction_bound!(load_der_private_key, &m)?)?;
+    m.add_function(pyo3::wrap_pyfunction_bound!(load_der_public_key, &m)?)?;
+    m.add_function(pyo3::wrap_pyfunction_bound!(load_pem_public_key, &m)?)?;
 
     Ok(m)
 }

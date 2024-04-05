@@ -9,6 +9,8 @@ use crate::backend::{hashes, utils};
 use crate::buf::CffiBuf;
 use crate::error::{CryptographyError, CryptographyResult};
 use crate::{exceptions, types};
+use pyo3::prelude::{PyAnyMethods, PyModuleMethods};
+use pyo3::PyNativeType;
 
 #[pyo3::prelude::pyclass(
     frozen,
@@ -79,9 +81,9 @@ fn oaep_hash_supported(md: &openssl::hash::MessageDigest) -> bool {
 fn setup_encryption_ctx(
     py: pyo3::Python<'_>,
     ctx: &mut openssl::pkey_ctx::PkeyCtx<impl openssl::pkey::HasPublic>,
-    padding: &pyo3::PyAny,
+    padding: &pyo3::Bound<'_, pyo3::PyAny>,
 ) -> CryptographyResult<()> {
-    if !padding.is_instance(types::ASYMMETRIC_PADDING.get(py)?)? {
+    if !padding.is_instance(&types::ASYMMETRIC_PADDING.get_bound(py)?)? {
         return Err(CryptographyError::from(
             pyo3::exceptions::PyTypeError::new_err(
                 "Padding must be an instance of AsymmetricPadding.",
@@ -89,12 +91,12 @@ fn setup_encryption_ctx(
         ));
     }
 
-    let padding_enum = if padding.is_instance(types::PKCS1V15.get(py)?)? {
+    let padding_enum = if padding.is_instance(&types::PKCS1V15.get_bound(py)?)? {
         openssl::rsa::Padding::PKCS1
-    } else if padding.is_instance(types::OAEP.get(py)?)? {
+    } else if padding.is_instance(&types::OAEP.get_bound(py)?)? {
         if !padding
             .getattr(pyo3::intern!(py, "_mgf"))?
-            .is_instance(types::MGF1.get(py)?)?
+            .is_instance(&types::MGF1.get_bound(py)?)?
         {
             return Err(CryptographyError::from(
                 exceptions::UnsupportedAlgorithm::new_err((
@@ -122,13 +124,13 @@ fn setup_encryption_ctx(
     if padding_enum == openssl::rsa::Padding::PKCS1_OAEP {
         let mgf1_md = hashes::message_digest_from_algorithm(
             py,
-            padding
+            &padding
                 .getattr(pyo3::intern!(py, "_mgf"))?
                 .getattr(pyo3::intern!(py, "_algorithm"))?,
         )?;
         let oaep_md = hashes::message_digest_from_algorithm(
             py,
-            padding.getattr(pyo3::intern!(py, "_algorithm"))?,
+            &padding.getattr(pyo3::intern!(py, "_algorithm"))?,
         )?;
 
         if !oaep_hash_supported(&mgf1_md) || !oaep_hash_supported(&oaep_md) {
@@ -145,10 +147,10 @@ fn setup_encryption_ctx(
 
         if let Some(label) = padding
             .getattr(pyo3::intern!(py, "_label"))?
-            .extract::<Option<&[u8]>>()?
+            .extract::<Option<pyo3::pybacked::PyBackedBytes>>()?
         {
             if !label.is_empty() {
-                ctx.set_rsa_oaep_label(label)?;
+                ctx.set_rsa_oaep_label(&label)?;
             }
         }
     }
@@ -159,12 +161,12 @@ fn setup_encryption_ctx(
 fn setup_signature_ctx(
     py: pyo3::Python<'_>,
     ctx: &mut openssl::pkey_ctx::PkeyCtx<impl openssl::pkey::HasPublic>,
-    padding: &pyo3::PyAny,
-    algorithm: &pyo3::PyAny,
+    padding: &pyo3::Bound<'_, pyo3::PyAny>,
+    algorithm: &pyo3::Bound<'_, pyo3::PyAny>,
     key_size: usize,
     is_signing: bool,
 ) -> CryptographyResult<()> {
-    if !padding.is_instance(types::ASYMMETRIC_PADDING.get(py)?)? {
+    if !padding.is_instance(&types::ASYMMETRIC_PADDING.get_bound(py)?)? {
         return Err(CryptographyError::from(
             pyo3::exceptions::PyTypeError::new_err(
                 "Padding must be an instance of AsymmetricPadding.",
@@ -172,12 +174,12 @@ fn setup_signature_ctx(
         ));
     }
 
-    let padding_enum = if padding.is_instance(types::PKCS1V15.get(py)?)? {
+    let padding_enum = if padding.is_instance(&types::PKCS1V15.get_bound(py)?)? {
         openssl::rsa::Padding::PKCS1
-    } else if padding.is_instance(types::PSS.get(py)?)? {
+    } else if padding.is_instance(&types::PSS.get_bound(py)?)? {
         if !padding
             .getattr(pyo3::intern!(py, "_mgf"))?
-            .is_instance(types::MGF1.get(py)?)?
+            .is_instance(&types::MGF1.get_bound(py)?)?
         {
             return Err(CryptographyError::from(
                 exceptions::UnsupportedAlgorithm::new_err((
@@ -188,7 +190,7 @@ fn setup_signature_ctx(
         }
 
         // PSS padding requires a hash algorithm
-        if !algorithm.is_instance(types::HASH_ALGORITHM.get(py)?)? {
+        if !algorithm.is_instance(&types::HASH_ALGORITHM.get_bound(py)?)? {
             return Err(CryptographyError::from(
                 pyo3::exceptions::PyTypeError::new_err(
                     "Expected instance of hashes.HashAlgorithm.",
@@ -249,11 +251,11 @@ fn setup_signature_ctx(
 
     if padding_enum == openssl::rsa::Padding::PKCS1_PSS {
         let salt = padding.getattr(pyo3::intern!(py, "_salt_length"))?;
-        if salt.is_instance(types::PADDING_MAX_LENGTH.get(py)?)? {
+        if salt.is_instance(&types::PADDING_MAX_LENGTH.get_bound(py)?)? {
             ctx.set_rsa_pss_saltlen(openssl::sign::RsaPssSaltlen::MAXIMUM_LENGTH)?;
-        } else if salt.is_instance(types::PADDING_DIGEST_LENGTH.get(py)?)? {
+        } else if salt.is_instance(&types::PADDING_DIGEST_LENGTH.get_bound(py)?)? {
             ctx.set_rsa_pss_saltlen(openssl::sign::RsaPssSaltlen::DIGEST_LENGTH)?;
-        } else if salt.is_instance(types::PADDING_AUTO.get(py)?)? {
+        } else if salt.is_instance(&types::PADDING_AUTO.get_bound(py)?)? {
             if is_signing {
                 return Err(CryptographyError::from(
                     pyo3::exceptions::PyValueError::new_err(
@@ -267,7 +269,7 @@ fn setup_signature_ctx(
 
         let mgf1_md = hashes::message_digest_from_algorithm(
             py,
-            padding
+            &padding
                 .getattr(pyo3::intern!(py, "_mgf"))?
                 .getattr(pyo3::intern!(py, "_algorithm"))?,
         )?;
@@ -283,9 +285,9 @@ impl RsaPrivateKey {
         &self,
         py: pyo3::Python<'p>,
         data: CffiBuf<'_>,
-        padding: &pyo3::PyAny,
-        algorithm: &pyo3::PyAny,
-    ) -> CryptographyResult<&'p pyo3::PyAny> {
+        padding: &pyo3::Bound<'p, pyo3::PyAny>,
+        algorithm: &pyo3::Bound<'p, pyo3::PyAny>,
+    ) -> CryptographyResult<pyo3::Bound<'p, pyo3::types::PyAny>> {
         let (data, algorithm) =
             utils::calculate_digest_and_algorithm(py, data.as_bytes(), algorithm)?;
 
@@ -293,10 +295,17 @@ impl RsaPrivateKey {
         ctx.sign_init().map_err(|_| {
             pyo3::exceptions::PyValueError::new_err("Unable to sign/verify with this key")
         })?;
-        setup_signature_ctx(py, &mut ctx, padding, algorithm, self.pkey.size(), true)?;
+        setup_signature_ctx(
+            py,
+            &mut ctx,
+            padding,
+            &algorithm.as_borrowed(),
+            self.pkey.size(),
+            true,
+        )?;
 
         let length = ctx.sign(data, None)?;
-        Ok(pyo3::types::PyBytes::new_with(py, length, |b| {
+        Ok(pyo3::types::PyBytes::new_bound_with(py, length, |b| {
             let length = ctx.sign(data, Some(b)).map_err(|_| {
                 pyo3::exceptions::PyValueError::new_err(
                     "Digest or salt length too long for key size. Use a larger key or shorter salt length if you are specifying a PSS salt",
@@ -304,15 +313,15 @@ impl RsaPrivateKey {
             })?;
             assert_eq!(length, b.len());
             Ok(())
-        })?)
+        })?.into_any())
     }
 
     fn decrypt<'p>(
         &self,
         py: pyo3::Python<'p>,
         ciphertext: &[u8],
-        padding: &pyo3::PyAny,
-    ) -> CryptographyResult<&'p pyo3::types::PyBytes> {
+        padding: &pyo3::Bound<'p, pyo3::PyAny>,
+    ) -> CryptographyResult<pyo3::Bound<'p, pyo3::types::PyBytes>> {
         let key_size_bytes =
             usize::try_from((self.pkey.rsa().unwrap().n().num_bits() + 7) / 8).unwrap();
         if key_size_bytes != ciphertext.len() {
@@ -344,7 +353,7 @@ impl RsaPrivateKey {
         let result = ctx.decrypt(ciphertext, Some(&mut plaintext));
 
         let py_result =
-            pyo3::types::PyBytes::new(py, &plaintext[..*result.as_ref().unwrap_or(&length)]);
+            pyo3::types::PyBytes::new_bound(py, &plaintext[..*result.as_ref().unwrap_or(&length)]);
         if result.is_err() {
             return Err(CryptographyError::from(
                 pyo3::exceptions::PyValueError::new_err("Decryption failed"),
@@ -397,12 +406,12 @@ impl RsaPrivateKey {
     }
 
     fn private_bytes<'p>(
-        slf: &pyo3::PyCell<Self>,
+        slf: &pyo3::Bound<'p, Self>,
         py: pyo3::Python<'p>,
-        encoding: &pyo3::PyAny,
-        format: &pyo3::PyAny,
-        encryption_algorithm: &pyo3::PyAny,
-    ) -> CryptographyResult<&'p pyo3::types::PyBytes> {
+        encoding: &pyo3::Bound<'p, pyo3::PyAny>,
+        format: &pyo3::Bound<'p, pyo3::PyAny>,
+        encryption_algorithm: &pyo3::Bound<'p, pyo3::PyAny>,
+    ) -> CryptographyResult<pyo3::Bound<'p, pyo3::types::PyBytes>> {
         utils::pkey_private_bytes(
             py,
             slf,
@@ -423,15 +432,22 @@ impl RsaPublicKey {
         py: pyo3::Python<'_>,
         signature: CffiBuf<'_>,
         data: CffiBuf<'_>,
-        padding: &pyo3::PyAny,
-        algorithm: &pyo3::PyAny,
+        padding: &pyo3::Bound<'_, pyo3::PyAny>,
+        algorithm: &pyo3::Bound<'_, pyo3::PyAny>,
     ) -> CryptographyResult<()> {
         let (data, algorithm) =
             utils::calculate_digest_and_algorithm(py, data.as_bytes(), algorithm)?;
 
         let mut ctx = openssl::pkey_ctx::PkeyCtx::new(&self.pkey)?;
         ctx.verify_init()?;
-        setup_signature_ctx(py, &mut ctx, padding, algorithm, self.pkey.size(), false)?;
+        setup_signature_ctx(
+            py,
+            &mut ctx,
+            padding,
+            &algorithm.as_borrowed(),
+            self.pkey.size(),
+            false,
+        )?;
 
         let valid = ctx.verify(data, signature.as_bytes()).unwrap_or(false);
         if !valid {
@@ -447,15 +463,15 @@ impl RsaPublicKey {
         &self,
         py: pyo3::Python<'p>,
         plaintext: &[u8],
-        padding: &pyo3::PyAny,
-    ) -> CryptographyResult<&'p pyo3::types::PyBytes> {
+        padding: &pyo3::Bound<'p, pyo3::PyAny>,
+    ) -> CryptographyResult<pyo3::Bound<'p, pyo3::types::PyBytes>> {
         let mut ctx = openssl::pkey_ctx::PkeyCtx::new(&self.pkey)?;
         ctx.encrypt_init()?;
 
         setup_encryption_ctx(py, &mut ctx, padding)?;
 
         let length = ctx.encrypt(plaintext, None)?;
-        Ok(pyo3::types::PyBytes::new_with(py, length, |b| {
+        Ok(pyo3::types::PyBytes::new_bound_with(py, length, |b| {
             let length = ctx
                 .encrypt(plaintext, Some(b))
                 .map_err(|_| pyo3::exceptions::PyValueError::new_err("Encryption failed"))?;
@@ -468,10 +484,10 @@ impl RsaPublicKey {
         &self,
         py: pyo3::Python<'p>,
         signature: &[u8],
-        padding: &pyo3::PyAny,
-        algorithm: &pyo3::PyAny,
-    ) -> CryptographyResult<&'p pyo3::types::PyBytes> {
-        if algorithm.is_instance(types::PREHASHED.get(py)?)? {
+        padding: &pyo3::Bound<'_, pyo3::PyAny>,
+        algorithm: &pyo3::Bound<'_, pyo3::PyAny>,
+    ) -> CryptographyResult<pyo3::Bound<'p, pyo3::types::PyBytes>> {
+        if algorithm.is_instance(&types::PREHASHED.get(py)?.as_borrowed())? {
             return Err(CryptographyError::from(
                 pyo3::exceptions::PyTypeError::new_err(
                     "Prehashed is only supported in the sign and verify methods. It cannot be used with recover_data_from_signature.",
@@ -489,7 +505,7 @@ impl RsaPublicKey {
             .verify_recover(signature, Some(&mut buf))
             .map_err(|_| exceptions::InvalidSignature::new_err(()))?;
 
-        Ok(pyo3::types::PyBytes::new(py, &buf[..length]))
+        Ok(pyo3::types::PyBytes::new_bound(py, &buf[..length]))
     }
 
     #[getter]
@@ -510,11 +526,11 @@ impl RsaPublicKey {
     }
 
     fn public_bytes<'p>(
-        slf: &pyo3::PyCell<Self>,
+        slf: &pyo3::Bound<'p, Self>,
         py: pyo3::Python<'p>,
-        encoding: &pyo3::PyAny,
-        format: &pyo3::PyAny,
-    ) -> CryptographyResult<&'p pyo3::types::PyBytes> {
+        encoding: &pyo3::Bound<'p, pyo3::PyAny>,
+        format: &pyo3::Bound<'p, pyo3::PyAny>,
+    ) -> CryptographyResult<pyo3::Bound<'p, pyo3::types::PyBytes>> {
         utils::pkey_public_bytes(py, slf, &slf.borrow().pkey, encoding, format, true, false)
     }
 
@@ -563,14 +579,14 @@ struct RsaPublicNumbers {
 
 #[allow(clippy::too_many_arguments)]
 fn check_private_key_components(
-    p: &pyo3::types::PyLong,
-    q: &pyo3::types::PyLong,
-    private_exponent: &pyo3::types::PyLong,
-    dmp1: &pyo3::types::PyLong,
-    dmq1: &pyo3::types::PyLong,
-    iqmp: &pyo3::types::PyLong,
-    public_exponent: &pyo3::types::PyLong,
-    modulus: &pyo3::types::PyLong,
+    p: &pyo3::Bound<'_, pyo3::types::PyLong>,
+    q: &pyo3::Bound<'_, pyo3::types::PyLong>,
+    private_exponent: &pyo3::Bound<'_, pyo3::types::PyLong>,
+    dmp1: &pyo3::Bound<'_, pyo3::types::PyLong>,
+    dmq1: &pyo3::Bound<'_, pyo3::types::PyLong>,
+    iqmp: &pyo3::Bound<'_, pyo3::types::PyLong>,
+    public_exponent: &pyo3::Bound<'_, pyo3::types::PyLong>,
+    modulus: &pyo3::Bound<'_, pyo3::types::PyLong>,
 ) -> CryptographyResult<()> {
     if modulus.lt(3)? {
         return Err(CryptographyError::from(
@@ -620,26 +636,25 @@ fn check_private_key_components(
         ));
     }
 
-    // No `bitand` method.
-    if public_exponent.call_method1("__and__", (1,))?.eq(0)? {
+    if public_exponent.bitand(1)?.eq(0)? {
         return Err(CryptographyError::from(
             pyo3::exceptions::PyValueError::new_err("public_exponent must be odd."),
         ));
     }
 
-    if dmp1.call_method1("__and__", (1,))?.eq(0)? {
+    if dmp1.bitand(1)?.eq(0)? {
         return Err(CryptographyError::from(
             pyo3::exceptions::PyValueError::new_err("dmp1 must be odd."),
         ));
     }
 
-    if dmq1.call_method1("__and__", (1,))?.eq(0)? {
+    if dmq1.bitand(1)?.eq(0)? {
         return Err(CryptographyError::from(
             pyo3::exceptions::PyValueError::new_err("dmq1 must be odd."),
         ));
     }
 
-    if p.call_method1("__mul__", (q,))?.ne(modulus)? {
+    if p.mul(q)?.ne(modulus)? {
         return Err(CryptographyError::from(
             pyo3::exceptions::PyValueError::new_err("p*q must equal modulus."),
         ));
@@ -681,25 +696,25 @@ impl RsaPrivateNumbers {
         let _ = backend;
 
         check_private_key_components(
-            self.p.as_ref(py),
-            self.q.as_ref(py),
-            self.d.as_ref(py),
-            self.dmp1.as_ref(py),
-            self.dmq1.as_ref(py),
-            self.iqmp.as_ref(py),
-            self.public_numbers.get().e.as_ref(py),
-            self.public_numbers.get().n.as_ref(py),
+            self.p.bind(py),
+            self.q.bind(py),
+            self.d.bind(py),
+            self.dmp1.bind(py),
+            self.dmq1.bind(py),
+            self.iqmp.bind(py),
+            self.public_numbers.get().e.bind(py),
+            self.public_numbers.get().n.bind(py),
         )?;
         let public_numbers = self.public_numbers.get();
         let rsa = openssl::rsa::Rsa::from_private_components(
-            utils::py_int_to_bn(py, public_numbers.n.as_ref(py))?,
-            utils::py_int_to_bn(py, public_numbers.e.as_ref(py))?,
-            utils::py_int_to_bn(py, self.d.as_ref(py))?,
-            utils::py_int_to_bn(py, self.p.as_ref(py))?,
-            utils::py_int_to_bn(py, self.q.as_ref(py))?,
-            utils::py_int_to_bn(py, self.dmp1.as_ref(py))?,
-            utils::py_int_to_bn(py, self.dmq1.as_ref(py))?,
-            utils::py_int_to_bn(py, self.iqmp.as_ref(py))?,
+            utils::py_int_to_bn(py, public_numbers.n.bind(py))?,
+            utils::py_int_to_bn(py, public_numbers.e.bind(py))?,
+            utils::py_int_to_bn(py, self.d.bind(py))?,
+            utils::py_int_to_bn(py, self.p.bind(py))?,
+            utils::py_int_to_bn(py, self.q.bind(py))?,
+            utils::py_int_to_bn(py, self.dmp1.bind(py))?,
+            utils::py_int_to_bn(py, self.dmq1.bind(py))?,
+            utils::py_int_to_bn(py, self.iqmp.bind(py))?,
         )
         .unwrap();
         if !unsafe_skip_rsa_key_validation {
@@ -714,34 +729,34 @@ impl RsaPrivateNumbers {
         py: pyo3::Python<'_>,
         other: pyo3::PyRef<'_, Self>,
     ) -> CryptographyResult<bool> {
-        Ok(self.p.as_ref(py).eq(other.p.as_ref(py))?
-            && self.q.as_ref(py).eq(other.q.as_ref(py))?
-            && self.d.as_ref(py).eq(other.d.as_ref(py))?
-            && self.dmp1.as_ref(py).eq(other.dmp1.as_ref(py))?
-            && self.dmq1.as_ref(py).eq(other.dmq1.as_ref(py))?
-            && self.iqmp.as_ref(py).eq(other.iqmp.as_ref(py))?
+        Ok(self.p.bind(py).eq(other.p.bind(py))?
+            && self.q.bind(py).eq(other.q.bind(py))?
+            && self.d.bind(py).eq(other.d.bind(py))?
+            && self.dmp1.bind(py).eq(other.dmp1.bind(py))?
+            && self.dmq1.bind(py).eq(other.dmq1.bind(py))?
+            && self.iqmp.bind(py).eq(other.iqmp.bind(py))?
             && self
                 .public_numbers
-                .as_ref(py)
-                .eq(other.public_numbers.as_ref(py))?)
+                .bind(py)
+                .eq(other.public_numbers.bind(py))?)
     }
 
     fn __hash__(&self, py: pyo3::Python<'_>) -> CryptographyResult<u64> {
         let mut hasher = DefaultHasher::new();
-        self.p.as_ref(py).hash()?.hash(&mut hasher);
-        self.q.as_ref(py).hash()?.hash(&mut hasher);
-        self.d.as_ref(py).hash()?.hash(&mut hasher);
-        self.dmp1.as_ref(py).hash()?.hash(&mut hasher);
-        self.dmq1.as_ref(py).hash()?.hash(&mut hasher);
-        self.iqmp.as_ref(py).hash()?.hash(&mut hasher);
-        self.public_numbers.as_ref(py).hash()?.hash(&mut hasher);
+        self.p.bind(py).hash()?.hash(&mut hasher);
+        self.q.bind(py).hash()?.hash(&mut hasher);
+        self.d.bind(py).hash()?.hash(&mut hasher);
+        self.dmp1.bind(py).hash()?.hash(&mut hasher);
+        self.dmq1.bind(py).hash()?.hash(&mut hasher);
+        self.iqmp.bind(py).hash()?.hash(&mut hasher);
+        self.public_numbers.bind(py).hash()?.hash(&mut hasher);
         Ok(hasher.finish())
     }
 }
 
 fn check_public_key_components(
-    e: &pyo3::types::PyLong,
-    n: &pyo3::types::PyLong,
+    e: &pyo3::Bound<'_, pyo3::types::PyLong>,
+    n: &pyo3::Bound<'_, pyo3::types::PyLong>,
 ) -> CryptographyResult<()> {
     if n.lt(3)? {
         return Err(CryptographyError::from(
@@ -755,8 +770,7 @@ fn check_public_key_components(
         ));
     }
 
-    // No `bitand` method.
-    if e.call_method1("__and__", (1,))?.eq(0)? {
+    if e.bitand(1)?.eq(0)? {
         return Err(CryptographyError::from(
             pyo3::exceptions::PyValueError::new_err("e must be odd."),
         ));
@@ -779,11 +793,11 @@ impl RsaPublicNumbers {
     ) -> CryptographyResult<RsaPublicKey> {
         let _ = backend;
 
-        check_public_key_components(self.e.as_ref(py), self.n.as_ref(py))?;
+        check_public_key_components(self.e.bind(py), self.n.bind(py))?;
 
         let rsa = openssl::rsa::Rsa::from_public_components(
-            utils::py_int_to_bn(py, self.n.as_ref(py))?,
-            utils::py_int_to_bn(py, self.e.as_ref(py))?,
+            utils::py_int_to_bn(py, self.n.bind(py))?,
+            utils::py_int_to_bn(py, self.e.bind(py))?,
         )
         .unwrap();
         let pkey = openssl::pkey::PKey::from_rsa(rsa)?;
@@ -795,29 +809,28 @@ impl RsaPublicNumbers {
         py: pyo3::Python<'_>,
         other: pyo3::PyRef<'_, Self>,
     ) -> CryptographyResult<bool> {
-        Ok(
-            self.e.as_ref(py).eq(other.e.as_ref(py))?
-                && self.n.as_ref(py).eq(other.n.as_ref(py))?,
-        )
+        Ok(self.e.bind(py).eq(other.e.bind(py))? && self.n.bind(py).eq(other.n.bind(py))?)
     }
 
     fn __hash__(&self, py: pyo3::Python<'_>) -> CryptographyResult<u64> {
         let mut hasher = DefaultHasher::new();
-        self.e.as_ref(py).hash()?.hash(&mut hasher);
-        self.n.as_ref(py).hash()?.hash(&mut hasher);
+        self.e.bind(py).hash()?.hash(&mut hasher);
+        self.n.bind(py).hash()?.hash(&mut hasher);
         Ok(hasher.finish())
     }
 
     fn __repr__(&self, py: pyo3::Python<'_>) -> pyo3::PyResult<String> {
-        let e = self.e.as_ref(py);
-        let n = self.n.as_ref(py);
+        let e = self.e.bind(py);
+        let n = self.n.bind(py);
         Ok(format!("<RSAPublicNumbers(e={e}, n={n})>"))
     }
 }
 
-pub(crate) fn create_module(py: pyo3::Python<'_>) -> pyo3::PyResult<&pyo3::prelude::PyModule> {
-    let m = pyo3::prelude::PyModule::new(py, "rsa")?;
-    m.add_function(pyo3::wrap_pyfunction!(generate_private_key, m)?)?;
+pub(crate) fn create_module(
+    py: pyo3::Python<'_>,
+) -> pyo3::PyResult<pyo3::Bound<'_, pyo3::prelude::PyModule>> {
+    let m = pyo3::prelude::PyModule::new_bound(py, "rsa")?;
+    m.add_function(pyo3::wrap_pyfunction!(generate_private_key, &m)?)?;
 
     m.add_class::<RsaPrivateKey>()?;
     m.add_class::<RsaPublicKey>()?;
