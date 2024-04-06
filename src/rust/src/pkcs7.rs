@@ -11,8 +11,10 @@ use cryptography_x509::{common, oid, pkcs7};
 use once_cell::sync::Lazy;
 #[cfg(not(CRYPTOGRAPHY_IS_BORINGSSL))]
 use openssl::pkcs7::Pkcs7;
+use pyo3::prelude::{PyAnyMethods, PyListMethods, PyModuleMethods};
 #[cfg(not(CRYPTOGRAPHY_IS_BORINGSSL))]
 use pyo3::IntoPy;
+use pyo3::PyNativeType;
 
 use crate::asn1::encode_der_data;
 use crate::buf::CffiBuf;
@@ -43,7 +45,7 @@ static OIDS_TO_MIC_NAME: Lazy<HashMap<&asn1::ObjectIdentifier, &str>> = Lazy::ne
 fn serialize_certificates<'p>(
     py: pyo3::Python<'p>,
     py_certs: Vec<pyo3::PyRef<'p, x509::certificate::Certificate>>,
-    encoding: &'p pyo3::PyAny,
+    encoding: &pyo3::Bound<'p, pyo3::PyAny>,
 ) -> CryptographyResult<pyo3::Bound<'p, pyo3::types::PyBytes>> {
     if py_certs.is_empty() {
         return Err(pyo3::exceptions::PyTypeError::new_err(
@@ -81,9 +83,9 @@ fn serialize_certificates<'p>(
 #[pyo3::prelude::pyfunction]
 fn sign_and_serialize<'p>(
     py: pyo3::Python<'p>,
-    builder: &'p pyo3::PyAny,
-    encoding: &'p pyo3::PyAny,
-    options: &'p pyo3::types::PyList,
+    builder: &pyo3::Bound<'p, pyo3::PyAny>,
+    encoding: &pyo3::Bound<'p, pyo3::PyAny>,
+    options: &pyo3::Bound<'p, pyo3::types::PyList>,
 ) -> CryptographyResult<pyo3::Bound<'p, pyo3::types::PyBytes>> {
     let raw_data: CffiBuf<'p> = builder.getattr(pyo3::intern!(py, "_data"))?.extract()?;
     let text_mode = options.contains(types::PKCS7_TEXT.get(py)?)?;
@@ -126,66 +128,79 @@ fn sign_and_serialize<'p>(
         .iter()
         .map(|p| p.raw.borrow_dependent())
         .collect::<Vec<_>>();
-    for (cert, py_private_key, py_hash_alg, rsa_padding) in &py_signers {
-        let (authenticated_attrs, signature) = if options
-            .contains(types::PKCS7_NO_ATTRIBUTES.get(py)?)?
-        {
-            (
-                None,
-                x509::sign::sign_data(
-                    py,
-                    py_private_key,
-                    py_hash_alg,
-                    rsa_padding,
-                    &data_with_header,
-                )?,
-            )
-        } else {
-            let mut authenticated_attrs = vec![
-                Attribute {
-                    type_id: PKCS7_CONTENT_TYPE_OID,
-                    values: common::Asn1ReadableOrWritable::new_write(asn1::SetOfWriter::new([
-                        asn1::parse_single(&content_type_bytes).unwrap(),
-                    ])),
-                },
-                Attribute {
-                    type_id: PKCS7_SIGNING_TIME_OID,
-                    values: common::Asn1ReadableOrWritable::new_write(asn1::SetOfWriter::new([
-                        asn1::parse_single(&signing_time_bytes).unwrap(),
-                    ])),
-                },
-            ];
 
-            let digest =
-                asn1::write_single(&x509::ocsp::hash_data(py, py_hash_alg, &data_with_header)?)?;
-            // Gross hack: copy to PyBytes to extend the lifetime to 'p
-            let digest_bytes = pyo3::types::PyBytes::new(py, &digest);
-            authenticated_attrs.push(Attribute {
-                type_id: PKCS7_MESSAGE_DIGEST_OID,
-                values: common::Asn1ReadableOrWritable::new_write(asn1::SetOfWriter::new([
-                    asn1::parse_single(digest_bytes.as_bytes()).unwrap(),
-                ])),
-            });
+    let mut digests = vec![];
+    if !options.contains(&types::PKCS7_NO_ATTRIBUTES.get_bound(py)?)? {
+        for (_, _, py_hash_alg, _) in &py_signers {
+            let digest = asn1::write_single(&x509::ocsp::hash_data(
+                py,
+                &py_hash_alg.as_borrowed(),
+                &data_with_header,
+            )?)?;
+            digests.push(digest);
+        }
+    }
+    for (i, (cert, py_private_key, py_hash_alg, rsa_padding)) in py_signers.iter().enumerate() {
+        let (authenticated_attrs, signature) =
+            if options.contains(&types::PKCS7_NO_ATTRIBUTES.get_bound(py)?)? {
+                (
+                    None,
+                    x509::sign::sign_data(
+                        py,
+                        py_private_key.as_borrowed().to_owned(),
+                        py_hash_alg.as_borrowed().to_owned(),
+                        rsa_padding.as_borrowed().to_owned(),
+                        &data_with_header,
+                    )?,
+                )
+            } else {
+                let mut authenticated_attrs = vec![
+                    Attribute {
+                        type_id: PKCS7_CONTENT_TYPE_OID,
+                        values: common::Asn1ReadableOrWritable::new_write(asn1::SetOfWriter::new(
+                            [asn1::parse_single(&content_type_bytes).unwrap()],
+                        )),
+                    },
+                    Attribute {
+                        type_id: PKCS7_SIGNING_TIME_OID,
+                        values: common::Asn1ReadableOrWritable::new_write(asn1::SetOfWriter::new(
+                            [asn1::parse_single(&signing_time_bytes).unwrap()],
+                        )),
+                    },
+                ];
 
-            if !options.contains(types::PKCS7_NO_CAPABILITIES.get(py)?)? {
                 authenticated_attrs.push(Attribute {
-                    type_id: PKCS7_SMIME_CAP_OID,
+                    type_id: PKCS7_MESSAGE_DIGEST_OID,
                     values: common::Asn1ReadableOrWritable::new_write(asn1::SetOfWriter::new([
-                        asn1::parse_single(&smime_cap_bytes).unwrap(),
+                        asn1::parse_single(&digests[i]).unwrap(),
                     ])),
                 });
-            }
 
-            let signed_data =
-                asn1::write_single(&asn1::SetOfWriter::new(authenticated_attrs.as_slice()))?;
+                if !options.contains(types::PKCS7_NO_CAPABILITIES.get(py)?)? {
+                    authenticated_attrs.push(Attribute {
+                        type_id: PKCS7_SMIME_CAP_OID,
+                        values: common::Asn1ReadableOrWritable::new_write(asn1::SetOfWriter::new(
+                            [asn1::parse_single(&smime_cap_bytes).unwrap()],
+                        )),
+                    });
+                }
 
-            (
-                Some(common::Asn1ReadableOrWritable::new_write(
-                    asn1::SetOfWriter::new(authenticated_attrs),
-                )),
-                x509::sign::sign_data(py, py_private_key, py_hash_alg, rsa_padding, &signed_data)?,
-            )
-        };
+                let signed_data =
+                    asn1::write_single(&asn1::SetOfWriter::new(authenticated_attrs.as_slice()))?;
+
+                (
+                    Some(common::Asn1ReadableOrWritable::new_write(
+                        asn1::SetOfWriter::new(authenticated_attrs),
+                    )),
+                    x509::sign::sign_data(
+                        py,
+                        py_private_key.as_borrowed().to_owned(),
+                        py_hash_alg.as_borrowed().to_owned(),
+                        rsa_padding.as_borrowed().to_owned(),
+                        &signed_data,
+                    )?,
+                )
+            };
 
         let digest_alg = x509::ocsp::HASH_NAME_TO_ALGORITHM_IDENTIFIERS[py_hash_alg
             .getattr(pyo3::intern!(py, "name"))?
@@ -268,7 +283,7 @@ fn compute_pkcs7_signature_algorithm<'p>(
     hash_algorithm: &'p pyo3::PyAny,
     rsa_padding: &'p pyo3::PyAny,
 ) -> pyo3::PyResult<common::AlgorithmIdentifier<'static>> {
-    let key_type = x509::sign::identify_key_type(py, private_key)?;
+    let key_type = x509::sign::identify_key_type(py, private_key.as_borrowed().to_owned())?;
     let has_pss_padding = rsa_padding.is_instance(types::PSS.get(py)?)?;
     // For RSA signatures (with no PSS padding), the OID is always the same no matter the
     // digest algorithm. See RFC 3370 (section 3.2).
@@ -278,7 +293,12 @@ fn compute_pkcs7_signature_algorithm<'p>(
             params: common::AlgorithmParameters::Rsa(Some(())),
         })
     } else {
-        x509::sign::compute_signature_algorithm(py, private_key, hash_algorithm, rsa_padding)
+        x509::sign::compute_signature_algorithm(
+            py,
+            private_key.as_borrowed().to_owned(),
+            hash_algorithm.as_borrowed().to_owned(),
+            rsa_padding.as_borrowed().to_owned(),
+        )
     }
 }
 
@@ -320,7 +340,7 @@ fn smime_canonicalize(data: &[u8], text_mode: bool) -> (Cow<'_, [u8]>, Cow<'_, [
 fn load_pkcs7_certificates(
     py: pyo3::Python<'_>,
     pkcs7: Pkcs7,
-) -> CryptographyResult<&pyo3::types::PyList> {
+) -> CryptographyResult<pyo3::Bound<'_, pyo3::types::PyList>> {
     let nid = pkcs7.type_().map(|t| t.nid());
     if nid != Some(openssl::nid::Nid::PKCS7_SIGNED) {
         let nid_string = nid.map_or("empty".to_string(), |n| n.as_raw().to_string());
@@ -340,9 +360,9 @@ fn load_pkcs7_certificates(
             ),
         )),
         Some(certificates) => {
-            let result = pyo3::types::PyList::empty(py);
+            let result = pyo3::types::PyList::empty_bound(py);
             for c in certificates {
-                let cert_der = pyo3::types::PyBytes::new(py, c.to_der()?.as_slice()).into_py(py);
+                let cert_der = pyo3::types::PyBytes::new_bound(py, c.to_der()?.as_slice()).unbind();
                 let cert = load_der_x509_certificate(py, cert_der, None)?;
                 result.append(cert.into_py(py))?;
             }
@@ -355,7 +375,7 @@ fn load_pkcs7_certificates(
 fn load_pem_pkcs7_certificates<'p>(
     py: pyo3::Python<'p>,
     data: &[u8],
-) -> CryptographyResult<&'p pyo3::types::PyList> {
+) -> CryptographyResult<pyo3::Bound<'p, pyo3::types::PyList>> {
     cfg_if::cfg_if! {
         if #[cfg(not(CRYPTOGRAPHY_IS_BORINGSSL))] {
             let pkcs7_decoded = openssl::pkcs7::Pkcs7::from_pem(data).map_err(|_| {
@@ -381,7 +401,7 @@ fn load_pem_pkcs7_certificates<'p>(
 fn load_der_pkcs7_certificates<'p>(
     py: pyo3::Python<'p>,
     data: &[u8],
-) -> CryptographyResult<&'p pyo3::types::PyList> {
+) -> CryptographyResult<pyo3::Bound<'p, pyo3::types::PyList>> {
     cfg_if::cfg_if! {
         if #[cfg(not(CRYPTOGRAPHY_IS_BORINGSSL))] {
             let pkcs7_decoded = openssl::pkcs7::Pkcs7::from_der(data).map_err(|_| {
@@ -403,13 +423,24 @@ fn load_der_pkcs7_certificates<'p>(
     }
 }
 
-pub(crate) fn create_submodule(py: pyo3::Python<'_>) -> pyo3::PyResult<&pyo3::prelude::PyModule> {
-    let submod = pyo3::prelude::PyModule::new(py, "pkcs7")?;
+pub(crate) fn create_submodule(
+    py: pyo3::Python<'_>,
+) -> pyo3::PyResult<pyo3::Bound<'_, pyo3::prelude::PyModule>> {
+    let submod = pyo3::prelude::PyModule::new_bound(py, "pkcs7")?;
 
-    submod.add_function(pyo3::wrap_pyfunction!(serialize_certificates, submod)?)?;
-    submod.add_function(pyo3::wrap_pyfunction!(sign_and_serialize, submod)?)?;
-    submod.add_function(pyo3::wrap_pyfunction!(load_pem_pkcs7_certificates, submod)?)?;
-    submod.add_function(pyo3::wrap_pyfunction!(load_der_pkcs7_certificates, submod)?)?;
+    submod.add_function(pyo3::wrap_pyfunction_bound!(
+        serialize_certificates,
+        &submod
+    )?)?;
+    submod.add_function(pyo3::wrap_pyfunction_bound!(sign_and_serialize, &submod)?)?;
+    submod.add_function(pyo3::wrap_pyfunction_bound!(
+        load_pem_pkcs7_certificates,
+        &submod
+    )?)?;
+    submod.add_function(pyo3::wrap_pyfunction_bound!(
+        load_der_pkcs7_certificates,
+        &submod
+    )?)?;
 
     Ok(submod)
 }

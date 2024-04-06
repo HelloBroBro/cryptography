@@ -17,7 +17,7 @@ use cryptography_x509::extensions::{
 use cryptography_x509::extensions::{Extension, SubjectAlternativeName};
 use cryptography_x509::{common, oid};
 use cryptography_x509_verification::ops::CryptoOps;
-use pyo3::prelude::{PyAnyMethods, PyListMethods};
+use pyo3::prelude::{PyAnyMethods, PyListMethods, PyModuleMethods};
 use pyo3::{IntoPy, PyNativeType, ToPyObject};
 
 use crate::asn1::{
@@ -103,14 +103,7 @@ impl Certificate {
     ) -> CryptographyResult<pyo3::Bound<'p, pyo3::types::PyBytes>> {
         let result = asn1::write_single(self.raw.borrow_dependent())?;
 
-        Ok(encode_der_data(
-            py,
-            "CERTIFICATE".to_string(),
-            result,
-            encoding.clone().into_gil_ref(),
-        )?
-        .as_borrowed()
-        .to_owned())
+        encode_der_data(py, "CERTIFICATE".to_string(), result, encoding)
     }
 
     #[getter]
@@ -900,7 +893,7 @@ pub(crate) fn time_from_py(
     py: pyo3::Python<'_>,
     val: &pyo3::Bound<'_, pyo3::PyAny>,
 ) -> CryptographyResult<common::Time> {
-    let dt = x509::py_to_datetime(py, val.clone().into_gil_ref())?;
+    let dt = x509::py_to_datetime(py, val.clone())?;
     time_from_datetime(dt)
 }
 
@@ -924,9 +917,9 @@ fn create_x509_certificate(
 ) -> CryptographyResult<Certificate> {
     let sigalg = x509::sign::compute_signature_algorithm(
         py,
-        private_key.clone().into_gil_ref(),
-        hash_algorithm.clone().into_gil_ref(),
-        rsa_padding.clone().into_gil_ref(),
+        private_key.clone(),
+        hash_algorithm.clone(),
+        rsa_padding.clone(),
     )?;
 
     let der = types::ENCODING_DER.get(py)?;
@@ -952,21 +945,18 @@ fn create_x509_certificate(
             .extract()?,
         serial: asn1::BigInt::new(py_uint_to_big_endian_bytes(py, py_serial)?).unwrap(),
         signature_alg: sigalg.clone(),
-        issuer: x509::common::encode_name(py, py_issuer_name.clone().into_gil_ref())?,
+        issuer: x509::common::encode_name(py, &py_issuer_name)?,
         validity: cryptography_x509::certificate::Validity {
             not_before: time_from_py(py, &py_not_before)?,
             not_after: time_from_py(py, &py_not_after)?,
         },
-        subject: x509::common::encode_name(py, py_subject_name.clone().into_gil_ref())?,
+        subject: x509::common::encode_name(py, &py_subject_name)?,
         spki: asn1::parse_single(spki_bytes)?,
         issuer_unique_id: None,
         subject_unique_id: None,
         raw_extensions: x509::common::encode_extensions(
             py,
-            builder
-                .getattr(pyo3::intern!(py, "_extensions"))?
-                .clone()
-                .into_gil_ref(),
+            &builder.getattr(pyo3::intern!(py, "_extensions"))?,
             extensions::encode_extension,
         )?,
     };
@@ -974,9 +964,9 @@ fn create_x509_certificate(
     let tbs_bytes = asn1::write_single(&tbs_cert)?;
     let signature = x509::sign::sign_data(
         py,
-        private_key.clone().into_gil_ref(),
-        hash_algorithm.clone().into_gil_ref(),
-        rsa_padding.clone().into_gil_ref(),
+        private_key.clone(),
+        hash_algorithm.clone(),
+        rsa_padding.clone(),
         &tbs_bytes,
     )?;
     let data = asn1::write_single(&cryptography_x509::certificate::Certificate {
@@ -999,11 +989,23 @@ pub(crate) fn set_bit(vals: &mut [u8], n: usize, set: bool) {
     }
 }
 
-pub(crate) fn add_to_module(module: &pyo3::prelude::PyModule) -> pyo3::PyResult<()> {
-    module.add_function(pyo3::wrap_pyfunction!(load_der_x509_certificate, module)?)?;
-    module.add_function(pyo3::wrap_pyfunction!(load_pem_x509_certificate, module)?)?;
-    module.add_function(pyo3::wrap_pyfunction!(load_pem_x509_certificates, module)?)?;
-    module.add_function(pyo3::wrap_pyfunction!(create_x509_certificate, module)?)?;
+pub(crate) fn add_to_module(module: &pyo3::Bound<'_, pyo3::types::PyModule>) -> pyo3::PyResult<()> {
+    module.add_function(pyo3::wrap_pyfunction_bound!(
+        load_der_x509_certificate,
+        module
+    )?)?;
+    module.add_function(pyo3::wrap_pyfunction_bound!(
+        load_pem_x509_certificate,
+        module
+    )?)?;
+    module.add_function(pyo3::wrap_pyfunction_bound!(
+        load_pem_x509_certificates,
+        module
+    )?)?;
+    module.add_function(pyo3::wrap_pyfunction_bound!(
+        create_x509_certificate,
+        module
+    )?)?;
 
     module.add_class::<Certificate>()?;
 

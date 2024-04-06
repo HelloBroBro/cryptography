@@ -11,7 +11,7 @@ use cryptography_x509_verification::{
     trust_store::Store,
     types::{DNSName, IPAddress},
 };
-use pyo3::IntoPy;
+use pyo3::prelude::{PyAnyMethods, PyListMethods, PyModuleMethods};
 
 use crate::backend::keys;
 use crate::error::{CryptographyError, CryptographyResult};
@@ -39,7 +39,7 @@ impl CryptoOps for PyCryptoOps {
         pyo3::Python::with_gil(|py| -> CryptographyResult<()> {
             sign::verify_signature_with_signature_algorithm(
                 py,
-                key.as_ref(py),
+                key.bind(py).clone(),
                 &cert.signature_alg,
                 cert.signature.as_bytes(),
                 &asn1::write_single(&cert.tbs_cert)?,
@@ -75,7 +75,7 @@ impl PolicyBuilder {
     fn time(
         &self,
         py: pyo3::Python<'_>,
-        new_time: &pyo3::PyAny,
+        new_time: pyo3::Bound<'_, pyo3::PyAny>,
     ) -> CryptographyResult<PolicyBuilder> {
         if self.time.is_some() {
             return Err(CryptographyError::from(
@@ -239,7 +239,10 @@ impl PyClientVerifier {
 #[pyo3::pymethods]
 impl PyClientVerifier {
     #[getter]
-    fn validation_time<'p>(&self, py: pyo3::Python<'p>) -> pyo3::PyResult<&'p pyo3::PyAny> {
+    fn validation_time<'p>(
+        &self,
+        py: pyo3::Python<'p>,
+    ) -> pyo3::PyResult<pyo3::Bound<'p, pyo3::PyAny>> {
         datetime_to_py(py, &self.as_policy().validation_time)
     }
 
@@ -273,7 +276,7 @@ impl PyClientVerifier {
         )
         .map_err(|e| VerificationError::new_err(format!("validation failed: {e:?}")))?;
 
-        let py_chain = pyo3::types::PyList::empty(py);
+        let py_chain = pyo3::types::PyList::empty_bound(py);
         for c in &chain {
             py_chain.append(c.extra())?;
         }
@@ -293,7 +296,7 @@ impl PyClientVerifier {
 
         Ok(PyVerifiedClient {
             subjects: py_gns,
-            chain: py_chain.into_py(py),
+            chain: py_chain.unbind(),
         })
     }
 }
@@ -320,7 +323,10 @@ impl PyServerVerifier {
 #[pyo3::pymethods]
 impl PyServerVerifier {
     #[getter]
-    fn validation_time<'p>(&self, py: pyo3::Python<'p>) -> pyo3::PyResult<&'p pyo3::PyAny> {
+    fn validation_time<'p>(
+        &self,
+        py: pyo3::Python<'p>,
+    ) -> pyo3::PyResult<pyo3::Bound<'p, pyo3::PyAny>> {
         datetime_to_py(py, &self.as_policy().validation_time)
     }
 
@@ -334,7 +340,7 @@ impl PyServerVerifier {
         py: pyo3::Python<'p>,
         leaf: pyo3::Py<PyCertificate>,
         intermediates: Vec<pyo3::Py<PyCertificate>>,
-    ) -> CryptographyResult<&'p pyo3::types::PyList> {
+    ) -> CryptographyResult<pyo3::Bound<'p, pyo3::types::PyList>> {
         let policy = self.as_policy();
         let store = self.store.get();
 
@@ -354,7 +360,7 @@ impl PyServerVerifier {
         )
         .map_err(|e| VerificationError::new_err(format!("validation failed: {e:?}")))?;
 
-        let result = pyo3::types::PyList::empty(py);
+        let result = pyo3::types::PyList::empty_bound(py);
         for c in chain {
             result.append(c.extra())?;
         }
@@ -366,21 +372,22 @@ fn build_subject_owner(
     py: pyo3::Python<'_>,
     subject: &pyo3::Py<pyo3::PyAny>,
 ) -> pyo3::PyResult<SubjectOwner> {
-    let subject = subject.as_ref(py);
+    let subject = subject.bind(py);
 
-    if subject.is_instance(types::DNS_NAME.get(py)?)? {
+    if subject.is_instance(&types::DNS_NAME.get_bound(py)?)? {
         let value = subject
             .getattr(pyo3::intern!(py, "value"))?
-            .downcast::<pyo3::types::PyString>()?;
-
-        Ok(SubjectOwner::DNSName(value.to_str()?.to_owned()))
-    } else if subject.is_instance(types::IP_ADDRESS.get(py)?)? {
+            // TODO: switch this to borrowing the string (using Bound::to_str) once our
+            // minimum Python version is 3.10
+            .extract::<String>()?;
+        Ok(SubjectOwner::DNSName(value))
+    } else if subject.is_instance(&types::IP_ADDRESS.get_bound(py)?)? {
         let value = subject
             .getattr(pyo3::intern!(py, "_packed"))?
             .call0()?
-            .downcast::<pyo3::types::PyBytes>()?;
-
-        Ok(SubjectOwner::IPAddress(value.into()))
+            .downcast::<pyo3::types::PyBytes>()?
+            .clone();
+        Ok(SubjectOwner::IPAddress(value.unbind()))
     } else {
         Err(pyo3::exceptions::PyTypeError::new_err(
             "unsupported subject type",
@@ -450,7 +457,7 @@ impl PyStore {
     }
 }
 
-pub(crate) fn add_to_module(module: &pyo3::prelude::PyModule) -> pyo3::PyResult<()> {
+pub(crate) fn add_to_module(module: &pyo3::Bound<'_, pyo3::types::PyModule>) -> pyo3::PyResult<()> {
     module.add_class::<PyVerifiedClient>()?;
     module.add_class::<PyClientVerifier>()?;
     module.add_class::<PyServerVerifier>()?;
@@ -458,7 +465,7 @@ pub(crate) fn add_to_module(module: &pyo3::prelude::PyModule) -> pyo3::PyResult<
     module.add_class::<PolicyBuilder>()?;
     module.add(
         "VerificationError",
-        module.py().get_type::<VerificationError>(),
+        module.py().get_type_bound::<VerificationError>(),
     )?;
 
     Ok(())

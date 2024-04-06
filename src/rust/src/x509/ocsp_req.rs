@@ -7,7 +7,7 @@ use cryptography_x509::{
     ocsp_req::{self, OCSPRequest as RawOCSPRequest},
     oid,
 };
-use pyo3::IntoPy;
+use pyo3::prelude::{PyAnyMethods, PyListMethods, PyModuleMethods};
 
 use crate::asn1::{big_byte_slice_to_py_int, oid_to_py_oid, py_uint_to_big_endian_bytes};
 use crate::error::{CryptographyError, CryptographyResult};
@@ -132,7 +132,7 @@ impl OCSPRequest {
                     }
                     oid::ACCEPTABLE_RESPONSES_OID => {
                         let oids = ext.value::<asn1::SequenceOf<'_, asn1::ObjectIdentifier>>()?;
-                        let py_oids = pyo3::types::PyList::empty(py);
+                        let py_oids = pyo3::types::PyList::empty_bound(py);
                         for oid in oids {
                             py_oids.append(oid_to_py_oid(py, &oid)?)?;
                         }
@@ -152,64 +152,55 @@ impl OCSPRequest {
     fn public_bytes<'p>(
         &self,
         py: pyo3::Python<'p>,
-        encoding: &pyo3::PyAny,
-    ) -> CryptographyResult<&'p pyo3::types::PyBytes> {
-        if !encoding.is(types::ENCODING_DER.get(py)?) {
+        encoding: &pyo3::Bound<'p, pyo3::PyAny>,
+    ) -> CryptographyResult<pyo3::Bound<'p, pyo3::types::PyBytes>> {
+        if !encoding.is(&types::ENCODING_DER.get_bound(py)?) {
             return Err(pyo3::exceptions::PyValueError::new_err(
                 "The only allowed encoding value is Encoding.DER",
             )
             .into());
         }
         let result = asn1::write_single(self.raw.borrow_dependent())?;
-        Ok(pyo3::types::PyBytes::new(py, &result))
+        Ok(pyo3::types::PyBytes::new_bound(py, &result))
     }
 }
 
 #[pyo3::prelude::pyfunction]
 fn create_ocsp_request(
     py: pyo3::Python<'_>,
-    builder: &pyo3::PyAny,
+    builder: &pyo3::Bound<'_, pyo3::PyAny>,
 ) -> CryptographyResult<OCSPRequest> {
     let builder_request = builder.getattr(pyo3::intern!(py, "_request"))?;
 
     // Declare outside the if-block so the lifetimes are right.
-    let (py_cert, py_issuer, py_hash): (
+    let (py_cert, py_issuer, py_hash, issuer_name_hash, issuer_key_hash): (
         pyo3::PyRef<'_, x509::certificate::Certificate>,
         pyo3::PyRef<'_, x509::certificate::Certificate>,
-        &pyo3::PyAny,
+        pyo3::Bound<'_, pyo3::PyAny>,
+        pyo3::pybacked::PyBackedBytes,
+        pyo3::pybacked::PyBackedBytes,
     );
     let req_cert = if !builder_request.is_none() {
-        let tuple = builder_request.extract::<(
-            pyo3::PyRef<'_, x509::certificate::Certificate>,
-            pyo3::PyRef<'_, x509::certificate::Certificate>,
-            &pyo3::PyAny,
-        )>()?;
-        py_cert = tuple.0;
-        py_issuer = tuple.1;
-        py_hash = tuple.2;
-        ocsp::certid_new(py, &py_cert, &py_issuer, py_hash)?
+        (py_cert, py_issuer, py_hash) = builder_request.extract()?;
+        ocsp::certid_new(py, &py_cert, &py_issuer, &py_hash)?
     } else {
-        let (issuer_name_hash, issuer_key_hash, py_serial, py_hash): (
-            &[u8],
-            &[u8],
-            pyo3::Bound<'_, pyo3::types::PyLong>,
-            &pyo3::PyAny,
-        ) = builder
+        let py_serial: pyo3::Bound<'_, pyo3::types::PyLong>;
+        (issuer_name_hash, issuer_key_hash, py_serial, py_hash) = builder
             .getattr(pyo3::intern!(py, "_request_hash"))?
             .extract()?;
         let serial_number = asn1::BigInt::new(py_uint_to_big_endian_bytes(py, py_serial)?).unwrap();
         ocsp::certid_new_from_hash(
             py,
-            issuer_name_hash,
-            issuer_key_hash,
+            &issuer_name_hash,
+            &issuer_key_hash,
             serial_number,
-            py_hash,
+            py_hash.into_gil_ref(),
         )?
     };
 
     let extensions = x509::common::encode_extensions(
         py,
-        builder.getattr(pyo3::intern!(py, "_extensions"))?,
+        &builder.getattr(pyo3::intern!(py, "_extensions"))?,
         extensions::encode_extension,
     )?;
     let reqs = [ocsp_req::Request {
@@ -228,12 +219,14 @@ fn create_ocsp_request(
         optional_signature: None,
     };
     let data = asn1::write_single(&ocsp_req)?;
-    load_der_ocsp_request(py, pyo3::types::PyBytes::new(py, &data).into_py(py))
+    load_der_ocsp_request(py, pyo3::types::PyBytes::new_bound(py, &data).unbind())
 }
 
-pub(crate) fn add_to_module(module: &pyo3::prelude::PyModule) -> pyo3::PyResult<()> {
-    module.add_function(pyo3::wrap_pyfunction!(load_der_ocsp_request, module)?)?;
-    module.add_function(pyo3::wrap_pyfunction!(create_ocsp_request, module)?)?;
+pub(crate) fn add_to_module(
+    module: &pyo3::Bound<'_, pyo3::prelude::PyModule>,
+) -> pyo3::PyResult<()> {
+    module.add_function(pyo3::wrap_pyfunction_bound!(load_der_ocsp_request, module)?)?;
+    module.add_function(pyo3::wrap_pyfunction_bound!(create_ocsp_request, module)?)?;
 
     Ok(())
 }
