@@ -179,7 +179,7 @@ impl CertificateRevocationList {
     ) -> pyo3::PyResult<pyo3::Bound<'p, pyo3::types::PyBytes>> {
         let data = self.public_bytes_der()?;
 
-        let mut h = Hash::new(py, &algorithm.as_borrowed(), None)?;
+        let mut h = Hash::new(py, &algorithm, None)?;
         h.update_bytes(&data)?;
         Ok(h.finalize(py)?)
     }
@@ -198,7 +198,7 @@ impl CertificateRevocationList {
         py: pyo3::Python<'p>,
     ) -> pyo3::PyResult<pyo3::Bound<'p, pyo3::PyAny>> {
         let oid = self.signature_algorithm_oid(py)?;
-        match types::SIG_OIDS_TO_HASH.get_bound(py)?.get_item(oid) {
+        match types::SIG_OIDS_TO_HASH.get(py)?.get_item(oid) {
             Ok(v) => Ok(v),
             Err(_) => Err(exceptions::UnsupportedAlgorithm::new_err(format!(
                 "Signature algorithm OID: {} not recognized",
@@ -259,7 +259,7 @@ impl CertificateRevocationList {
         &self,
         py: pyo3::Python<'p>,
     ) -> pyo3::PyResult<pyo3::Bound<'p, pyo3::PyAny>> {
-        let warning_cls = types::DEPRECATED_IN_42.get_bound(py)?;
+        let warning_cls = types::DEPRECATED_IN_42.get(py)?;
         pyo3::PyErr::warn_bound(
                 py,
                 &warning_cls,
@@ -288,23 +288,21 @@ impl CertificateRevocationList {
         &self,
         py: pyo3::Python<'p>,
     ) -> pyo3::PyResult<pyo3::Bound<'p, pyo3::PyAny>> {
-        let warning_cls = types::DEPRECATED_IN_42.get_bound(py)?;
+        let warning_cls = types::DEPRECATED_IN_42.get(py)?;
         pyo3::PyErr::warn_bound(
                 py,
                 &warning_cls,
                 "Properties that return a naïve datetime object have been deprecated. Please switch to last_update_utc.",
                 1,
             )?;
-        Ok(x509::datetime_to_py(
+        x509::datetime_to_py(
             py,
             self.owned
                 .borrow_dependent()
                 .tbs_cert_list
                 .this_update
                 .as_datetime(),
-        )?
-        .as_borrowed()
-        .to_owned())
+        )
     }
 
     #[getter]
@@ -354,9 +352,9 @@ impl CertificateRevocationList {
                         types::AUTHORITY_INFORMATION_ACCESS.get(py)?.call1((ads,))?,
                     ))
                 }
-                oid::AUTHORITY_KEY_IDENTIFIER_OID => Ok(Some(
-                    certificate::parse_authority_key_identifier(py, ext)?.into_gil_ref(),
-                )),
+                oid::AUTHORITY_KEY_IDENTIFIER_OID => {
+                    Ok(Some(certificate::parse_authority_key_identifier(py, ext)?))
+                }
                 oid::ISSUING_DISTRIBUTION_POINT_OID => {
                     let idp = ext.value::<crl::IssuingDistributionPoint<'_>>()?;
                     let (full_name, relative_name) = match idp.distribution_point {
@@ -558,19 +556,17 @@ impl RevokedCertificate {
         &self,
         py: pyo3::Python<'p>,
     ) -> pyo3::PyResult<pyo3::Bound<'p, pyo3::PyAny>> {
-        let warning_cls = types::DEPRECATED_IN_42.get_bound(py)?;
+        let warning_cls = types::DEPRECATED_IN_42.get(py)?;
         pyo3::PyErr::warn_bound(
                 py,
                 &warning_cls,
                 "Properties that return a naïve datetime object have been deprecated. Please switch to revocation_date_utc.",
                 1,
             )?;
-        Ok(x509::datetime_to_py(
+        x509::datetime_to_py(
             py,
             self.owned.borrow_dependent().revocation_date.as_datetime(),
-        )?
-        .as_borrowed()
-        .to_owned())
+        )
     }
 
     #[getter]
@@ -590,7 +586,7 @@ impl RevokedCertificate {
             py,
             &self.cached_extensions,
             &self.owned.borrow_dependent().raw_crl_entry_extensions,
-            |ext| parse_crl_entry_ext(py, ext).map(|v| v.map(|v| v.into_gil_ref())),
+            |ext| parse_crl_entry_ext(py, ext),
         )
     }
 }
@@ -618,7 +614,7 @@ pub(crate) fn parse_crl_reason_flags<'p>(
             ))
         }
     };
-    Ok(types::REASON_FLAGS.get_bound(py)?.getattr(flag_name)?)
+    Ok(types::REASON_FLAGS.get(py)?.getattr(flag_name)?)
 }
 
 pub fn parse_crl_entry_ext<'p>(
@@ -628,19 +624,17 @@ pub fn parse_crl_entry_ext<'p>(
     match ext.extn_id {
         oid::CRL_REASON_OID => {
             let flags = parse_crl_reason_flags(py, &ext.value::<crl::CRLReason>()?)?;
-            Ok(Some(types::CRL_REASON.get_bound(py)?.call1((flags,))?))
+            Ok(Some(types::CRL_REASON.get(py)?.call1((flags,))?))
         }
         oid::CERTIFICATE_ISSUER_OID => {
             let gn_seq = ext.value::<asn1::SequenceOf<'_, name::GeneralName<'_>>>()?;
             let gns = x509::parse_general_names(py, &gn_seq)?;
-            Ok(Some(
-                types::CERTIFICATE_ISSUER.get_bound(py)?.call1((gns,))?,
-            ))
+            Ok(Some(types::CERTIFICATE_ISSUER.get(py)?.call1((gns,))?))
         }
         oid::INVALIDITY_DATE_OID => {
             let time = ext.value::<asn1::GeneralizedTime>()?;
             let py_dt = x509::datetime_to_py(py, time.as_datetime())?;
-            Ok(Some(types::INVALIDITY_DATE.get_bound(py)?.call1((py_dt,))?))
+            Ok(Some(types::INVALIDITY_DATE.get(py)?.call1((py_dt,))?))
         }
         _ => Ok(None),
     }
@@ -674,10 +668,7 @@ fn create_x509_crl(
         revoked_certs.push(crl::RevokedCertificate {
             user_certificate: asn1::BigUint::new(py_uint_to_big_endian_bytes(py, serial_number)?)
                 .unwrap(),
-            revocation_date: x509::certificate::time_from_py(
-                py,
-                &py_revocation_date.as_borrowed(),
-            )?,
+            revocation_date: x509::certificate::time_from_py(py, &py_revocation_date)?,
             raw_crl_entry_extensions: x509::common::encode_extensions(
                 py,
                 &py_revoked_cert.getattr(pyo3::intern!(py, "extensions"))?,
@@ -692,12 +683,9 @@ fn create_x509_crl(
     let tbs_cert_list = crl::TBSCertList {
         version: Some(1),
         signature: sigalg.clone(),
-        issuer: x509::common::encode_name(py, &py_issuer_name.as_borrowed())?,
-        this_update: x509::certificate::time_from_py(py, &py_this_update.as_borrowed())?,
-        next_update: Some(x509::certificate::time_from_py(
-            py,
-            &py_next_update.as_borrowed(),
-        )?),
+        issuer: x509::common::encode_name(py, &py_issuer_name)?,
+        this_update: x509::certificate::time_from_py(py, &py_this_update)?,
+        next_update: Some(x509::certificate::time_from_py(py, &py_next_update)?),
         revoked_certificates: if revoked_certs.is_empty() {
             None
         } else {
@@ -715,9 +703,9 @@ fn create_x509_crl(
     let tbs_bytes = asn1::write_single(&tbs_cert_list)?;
     let signature = x509::sign::sign_data(
         py,
-        private_key.as_borrowed().to_owned(),
-        hash_algorithm.as_borrowed().to_owned(),
-        rsa_padding.as_borrowed().to_owned(),
+        private_key.clone(),
+        hash_algorithm.clone(),
+        rsa_padding.clone(),
         &tbs_bytes,
     )?;
     let data = asn1::write_single(&crl::CertificateRevocationList {

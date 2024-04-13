@@ -91,10 +91,7 @@ impl OCSPRequest {
         let cert_id = self.cert_id();
 
         match ocsp::ALGORITHM_PARAMETERS_TO_HASH.get(&cert_id.hash_algorithm.params) {
-            Some(alg_name) => Ok(types::HASHES_MODULE
-                .get_bound(py)?
-                .getattr(*alg_name)?
-                .call0()?),
+            Some(alg_name) => Ok(types::HASHES_MODULE.get(py)?.getattr(*alg_name)?.call0()?),
             None => Err(CryptographyError::from(
                 exceptions::UnsupportedAlgorithm::new_err(format!(
                     "Signature algorithm OID: {} not recognized",
@@ -157,7 +154,7 @@ impl OCSPRequest {
         py: pyo3::Python<'p>,
         encoding: &pyo3::Bound<'p, pyo3::PyAny>,
     ) -> CryptographyResult<pyo3::Bound<'p, pyo3::types::PyBytes>> {
-        if !encoding.is(&types::ENCODING_DER.get_bound(py)?) {
+        if !encoding.is(&types::ENCODING_DER.get(py)?) {
             return Err(pyo3::exceptions::PyValueError::new_err(
                 "The only allowed encoding value is Encoding.DER",
             )

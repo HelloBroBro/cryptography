@@ -21,10 +21,10 @@ fn _extract_buffer_length<'p>(
     let bufobj = if mutable {
         let kwargs = [(pyo3::intern!(py, "require_writable"), true)].into_py_dict_bound(py);
         types::FFI_FROM_BUFFER
-            .get_bound(py)?
+            .get(py)?
             .call((pyobj,), Some(&kwargs))?
     } else {
-        types::FFI_FROM_BUFFER.get_bound(py)?.call1((pyobj,))?
+        types::FFI_FROM_BUFFER.get(py)?.call1((pyobj,))?
     };
     let ptrval = types::FFI_CAST
         .get(py)?

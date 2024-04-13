@@ -33,7 +33,7 @@ impl ObjectIdentifier {
         py: pyo3::Python<'p>,
     ) -> pyo3::PyResult<pyo3::Bound<'p, pyo3::PyAny>> {
         types::OID_NAMES
-            .get_bound(py)?
+            .get(py)?
             .call_method1(pyo3::intern!(py, "get"), (slf, "Unknown OID"))
     }
 
@@ -42,11 +42,11 @@ impl ObjectIdentifier {
     }
 
     fn __repr__(slf: &pyo3::Bound<'_, Self>, py: pyo3::Python<'_>) -> pyo3::PyResult<String> {
-        let name = Self::_name(slf.borrow(), py)?.extract::<&str>()?;
+        let name = Self::_name(slf.borrow(), py)?;
         Ok(format!(
             "<ObjectIdentifier(oid={}, name={})>",
             slf.get().oid,
-            name
+            name.extract::<&str>()?
         ))
     }
 

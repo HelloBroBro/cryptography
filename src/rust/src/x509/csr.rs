@@ -130,7 +130,7 @@ impl CertificateSigningRequest {
         py: pyo3::Python<'p>,
         oid: pyo3::Bound<'p, pyo3::PyAny>,
     ) -> pyo3::PyResult<pyo3::Bound<'p, pyo3::PyAny>> {
-        let warning_cls = types::DEPRECATED_IN_36.get_bound(py)?;
+        let warning_cls = types::DEPRECATED_IN_36.get(py)?;
         let warning_msg = "CertificateSigningRequest.get_attribute_for_oid has been deprecated. Please switch to request.attributes.get_attribute_for_oid.";
         pyo3::PyErr::warn_bound(py, &warning_cls, warning_msg, 1)?;
 
@@ -194,12 +194,10 @@ impl CertificateSigningRequest {
                     "Long-form tags are not supported in CSR attribute values",
                 ))
             })?;
-            let pyattr = types::ATTRIBUTE
-                .get_bound(py)?
-                .call1((oid, serialized, tag))?;
+            let pyattr = types::ATTRIBUTE.get(py)?.call1((oid, serialized, tag))?;
             pyattrs.append(pyattr)?;
         }
-        types::ATTRIBUTES.get_bound(py)?.call1((pyattrs,))
+        types::ATTRIBUTES.get(py)?.call1((pyattrs,))
     }
 
     #[getter]
@@ -216,7 +214,7 @@ impl CertificateSigningRequest {
             })?;
 
         x509::parse_and_cache_extensions(py, &self.cached_extensions, &raw_exts, |ext| {
-            certificate::parse_cert_ext(py, ext).map(|x| x.map(|y| y.into_gil_ref()))
+            certificate::parse_cert_ext(py, ext)
         })
     }
 
@@ -360,7 +358,7 @@ fn create_x509_csr(
 
     let csr_info = CertificationRequestInfo {
         version: 0,
-        subject: x509::common::encode_name(py, &py_subject_name.as_borrowed())?,
+        subject: x509::common::encode_name(py, &py_subject_name)?,
         spki: asn1::parse_single(&spki_bytes)?,
         attributes: common::Asn1ReadableOrWritable::new_write(asn1::SetOfWriter::new(attrs)),
     };
