@@ -918,12 +918,13 @@ fn create_x509_certificate(
     let py_not_before = builder.getattr(pyo3::intern!(py, "_not_valid_before"))?;
     let py_not_after = builder.getattr(pyo3::intern!(py, "_not_valid_after"))?;
 
+    let serial_bytes = py_uint_to_big_endian_bytes(py, py_serial)?;
     let tbs_cert = cryptography_x509::certificate::TbsCertificate {
         version: builder
             .getattr(pyo3::intern!(py, "_version"))?
             .getattr(pyo3::intern!(py, "value"))?
             .extract()?,
-        serial: asn1::BigInt::new(py_uint_to_big_endian_bytes(py, py_serial)?).unwrap(),
+        serial: asn1::BigInt::new(&serial_bytes).unwrap(),
         signature_alg: sigalg.clone(),
         issuer: x509::common::encode_name(py, &py_issuer_name)?,
         validity: cryptography_x509::certificate::Validity {
@@ -952,7 +953,7 @@ fn create_x509_certificate(
     let data = asn1::write_single(&cryptography_x509::certificate::Certificate {
         tbs_cert,
         signature_alg: sigalg,
-        signature: asn1::BitString::new(signature, 0).unwrap(),
+        signature: asn1::BitString::new(&signature, 0).unwrap(),
     })?;
     load_der_x509_certificate(
         py,

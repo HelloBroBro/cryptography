@@ -9,6 +9,7 @@ use crate::error::{CryptographyError, CryptographyResult};
 use crate::x509::{certificate, sct};
 use crate::{types, x509};
 use pyo3::prelude::PyAnyMethods;
+use pyo3::pybacked::PyBackedStr;
 
 fn encode_general_subtrees<'a>(
     py: pyo3::Python<'a>,
@@ -51,10 +52,11 @@ pub(crate) fn encode_authority_key_identifier<'a>(
     } else {
         None
     };
+    let serial_bytes;
     let authority_cert_serial_number =
         if let Some(authority_cert_serial_number) = aki.authority_cert_serial_number {
-            let serial_bytes = py_uint_to_big_endian_bytes(py, authority_cert_serial_number)?;
-            Some(asn1::BigUint::new(serial_bytes).unwrap())
+            serial_bytes = py_uint_to_big_endian_bytes(py, authority_cert_serial_number)?;
+            Some(asn1::BigUint::new(&serial_bytes).unwrap())
         } else {
             None
         };
@@ -215,6 +217,8 @@ fn encode_certificate_policies(
     ext: &pyo3::Bound<'_, pyo3::PyAny>,
 ) -> CryptographyResult<Vec<u8>> {
     let mut policy_informations = vec![];
+    let ka_bytes = cryptography_keepalive::KeepAlive::new();
+    let ka_str = cryptography_keepalive::KeepAlive::new();
     for py_policy_info in ext.iter()? {
         let py_policy_info = py_policy_info?;
         let py_policy_qualifiers =
@@ -224,7 +228,8 @@ fn encode_certificate_policies(
             for py_qualifier in py_policy_qualifiers.iter()? {
                 let py_qualifier = py_qualifier?;
                 let qualifier = if py_qualifier.is_instance_of::<pyo3::types::PyString>() {
-                    let cps_uri = match asn1::IA5String::new(py_qualifier.extract()?) {
+                    let py_qualifier_str = ka_str.add(py_qualifier.extract::<PyBackedStr>()?);
+                    let cps_uri = match asn1::IA5String::new(py_qualifier_str) {
                         Some(s) => s,
                         None => {
                             return Err(pyo3::exceptions::PyValueError::new_err(
@@ -245,17 +250,18 @@ fn encode_certificate_policies(
                             .getattr(pyo3::intern!(py, "notice_numbers"))?
                             .iter()?
                         {
-                            let bytes = py_uint_to_big_endian_bytes(ext.py(), py_num?.extract()?)?;
+                            let bytes = ka_bytes
+                                .add(py_uint_to_big_endian_bytes(ext.py(), py_num?.extract()?)?);
                             notice_numbers.push(asn1::BigUint::new(bytes).unwrap());
                         }
-
+                        let py_notice_str = ka_str.add(
+                            py_notice
+                                .getattr(pyo3::intern!(py, "organization"))?
+                                .extract::<PyBackedStr>()?,
+                        );
                         Some(extensions::NoticeReference {
                             organization: extensions::DisplayText::Utf8String(
-                                asn1::Utf8String::new(
-                                    py_notice
-                                        .getattr(pyo3::intern!(py, "organization"))?
-                                        .extract()?,
-                                ),
+                                asn1::Utf8String::new(py_notice_str),
                             ),
                             notice_numbers: common::Asn1ReadableOrWritable::new_write(
                                 asn1::SequenceOfWriter::new(notice_numbers),
@@ -267,8 +273,10 @@ fn encode_certificate_policies(
                     let py_explicit_text =
                         py_qualifier.getattr(pyo3::intern!(py, "explicit_text"))?;
                     let explicit_text = if py_explicit_text.is_truthy()? {
+                        let py_explicit_text_str =
+                            ka_str.add(py_explicit_text.extract::<PyBackedStr>()?);
                         Some(extensions::DisplayText::Utf8String(asn1::Utf8String::new(
-                            py_explicit_text.extract()?,
+                            py_explicit_text_str,
                         )))
                     } else {
                         None
@@ -454,7 +462,7 @@ pub(crate) fn encode_extension(
                 .clone();
             let bytes = py_uint_to_big_endian_bytes(ext.py(), intval)?;
             Ok(Some(asn1::write_single(
-                &asn1::BigUint::new(bytes).unwrap(),
+                &asn1::BigUint::new(&bytes).unwrap(),
             )?))
         }
         &oid::ISSUER_ALTERNATIVE_NAME_OID | &oid::SUBJECT_ALTERNATIVE_NAME_OID => {
@@ -503,7 +511,7 @@ pub(crate) fn encode_extension(
                 .clone();
             let bytes = py_uint_to_big_endian_bytes(ext.py(), intval)?;
             Ok(Some(asn1::write_single(
-                &asn1::BigUint::new(bytes).unwrap(),
+                &asn1::BigUint::new(&bytes).unwrap(),
             )?))
         }
         &oid::ISSUING_DISTRIBUTION_POINT_OID => {
