@@ -305,10 +305,15 @@ fn create_x509_csr(
         .call_method1(pyo3::intern!(py, "public_bytes"), (der, spki))?
         .extract::<pyo3::pybacked::PyBackedBytes>()?;
 
+    let ka_vec = cryptography_keepalive::KeepAlive::new();
+    let ka_bytes = cryptography_keepalive::KeepAlive::new();
+
     let mut attrs = vec![];
     let ext_bytes;
     if let Some(exts) = x509::common::encode_extensions(
         py,
+        &ka_vec,
+        &ka_bytes,
         &builder.getattr(pyo3::intern!(py, "_extensions"))?,
         x509::extensions::encode_extension,
     )? {
@@ -356,9 +361,11 @@ fn create_x509_csr(
 
     let py_subject_name = builder.getattr(pyo3::intern!(py, "_subject_name"))?;
 
+    let ka = cryptography_keepalive::KeepAlive::new();
+
     let csr_info = CertificationRequestInfo {
         version: 0,
-        subject: x509::common::encode_name(py, &py_subject_name)?,
+        subject: x509::common::encode_name(py, &ka, &py_subject_name)?,
         spki: asn1::parse_single(&spki_bytes)?,
         attributes: common::Asn1ReadableOrWritable::new_write(asn1::SetOfWriter::new(attrs)),
     };
