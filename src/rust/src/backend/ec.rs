@@ -45,7 +45,7 @@ fn curve_from_py_curve(
     }
 
     let py_curve_name = py_curve.getattr(pyo3::intern!(py, "name"))?;
-    let nid = match py_curve_name.extract()? {
+    let nid = match &*py_curve_name.extract::<pyo3::pybacked::PyBackedStr>()? {
         "secp192r1" => openssl::nid::Nid::X9_62_PRIME192V1,
         "secp224r1" => openssl::nid::Nid::SECP224R1,
         "secp256r1" => openssl::nid::Nid::X9_62_PRIME256V1,
@@ -311,7 +311,7 @@ impl ECPrivateKey {
         // easily known a priori (if `r` or `s` has a leading 0, the signature
         // will be a byte or two shorter than the maximum possible length).
         let mut sig = vec![];
-        signer.sign_to_vec(data, &mut sig)?;
+        signer.sign_to_vec(data.as_bytes(), &mut sig)?;
         Ok(pyo3::types::PyBytes::new_bound(py, &sig))
     }
 
@@ -408,7 +408,9 @@ impl ECPublicKey {
 
         let mut verifier = openssl::pkey_ctx::PkeyCtx::new(&self.pkey)?;
         verifier.verify_init()?;
-        let valid = verifier.verify(data, signature.as_bytes()).unwrap_or(false);
+        let valid = verifier
+            .verify(data.as_bytes(), signature.as_bytes())
+            .unwrap_or(false);
         if !valid {
             return Err(CryptographyError::from(
                 exceptions::InvalidSignature::new_err(()),

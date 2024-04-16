@@ -60,8 +60,11 @@ impl PKCS12Certificate {
         let py_friendly_name_repr;
         let friendly_name_repr = match &self.friendly_name {
             Some(v) => {
-                py_friendly_name_repr = v.bind(py).repr()?;
-                py_friendly_name_repr.extract()?
+                py_friendly_name_repr = v
+                    .bind(py)
+                    .repr()?
+                    .extract::<pyo3::pybacked::PyBackedStr>()?;
+                &*py_friendly_name_repr
             }
             None => "None",
         };
@@ -315,8 +318,11 @@ pub(crate) fn create_submodule(
 ) -> pyo3::PyResult<pyo3::Bound<'_, pyo3::prelude::PyModule>> {
     let submod = pyo3::prelude::PyModule::new_bound(py, "pkcs12")?;
 
-    submod.add_function(pyo3::wrap_pyfunction!(load_key_and_certificates, &submod)?)?;
-    submod.add_function(pyo3::wrap_pyfunction!(load_pkcs12, &submod)?)?;
+    submod.add_function(pyo3::wrap_pyfunction_bound!(
+        load_key_and_certificates,
+        &submod
+    )?)?;
+    submod.add_function(pyo3::wrap_pyfunction_bound!(load_pkcs12, &submod)?)?;
 
     submod.add_class::<PKCS12Certificate>()?;
 

@@ -11,7 +11,7 @@ use cryptography_x509::{common, oid, pkcs7};
 use once_cell::sync::Lazy;
 #[cfg(not(CRYPTOGRAPHY_IS_BORINGSSL))]
 use openssl::pkcs7::Pkcs7;
-use pyo3::prelude::{PyAnyMethods, PyListMethods, PyModuleMethods};
+use pyo3::prelude::{PyAnyMethods, PyBytesMethods, PyListMethods, PyModuleMethods};
 #[cfg(not(CRYPTOGRAPHY_IS_BORINGSSL))]
 use pyo3::IntoPy;
 
@@ -160,15 +160,12 @@ fn sign_and_serialize<'p>(
                     },
                 ];
 
-                let digest = ka_vec.add(asn1::write_single(&x509::ocsp::hash_data(
-                    py,
-                    py_hash_alg,
-                    &data_with_header,
-                )?)?);
+                let digest = x509::ocsp::hash_data(py, py_hash_alg, &data_with_header)?;
+                let digest_wrapped = ka_vec.add(asn1::write_single(&digest.as_bytes())?);
                 authenticated_attrs.push(Attribute {
                     type_id: PKCS7_MESSAGE_DIGEST_OID,
                     values: common::Asn1ReadableOrWritable::new_write(asn1::SetOfWriter::new([
-                        asn1::parse_single(digest).unwrap(),
+                        asn1::parse_single(digest_wrapped).unwrap(),
                     ])),
                 });
 
@@ -198,10 +195,10 @@ fn sign_and_serialize<'p>(
                 )
             };
 
-        let digest_alg = x509::ocsp::HASH_NAME_TO_ALGORITHM_IDENTIFIERS[py_hash_alg
+        let digest_alg = x509::ocsp::HASH_NAME_TO_ALGORITHM_IDENTIFIERS[&*py_hash_alg
             .getattr(pyo3::intern!(py, "name"))?
-            .extract::<&str>()?]
-        .clone();
+            .extract::<pyo3::pybacked::PyBackedStr>()?]
+            .clone();
         // Technically O(n^2), but no one will have that many signers.
         if !digest_algs.contains(&digest_alg) {
             digest_algs.push(digest_alg.clone());
