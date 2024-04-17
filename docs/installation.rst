@@ -20,7 +20,7 @@ operating systems.
 * x86-64 CentOS 9 Stream
 * x86-64 Fedora (latest)
 * x86-64 macOS 13 Ventura and ARM64 macOS 14 Sonoma
-* x86-64 Ubuntu 20.04, 22.04, rolling
+* x86-64 Ubuntu 20.04, 22.04, 24.04, rolling
 * ARM64 Ubuntu 22.04
 * x86-64 Debian Buster (10.x), Bullseye (11.x), Bookworm (12.x),
   Trixie (13.x), and Sid (unstable)
@@ -31,10 +31,10 @@ We test compiling with ``clang`` as well as ``gcc`` and use the following
 OpenSSL releases in addition to distribution provided releases from the
 above supported platforms:
 
-* ``OpenSSL 1.1.1-latest``
 * ``OpenSSL 3.0-latest``
 * ``OpenSSL 3.1-latest``
 * ``OpenSSL 3.2-latest``
+* ``OpenSSL 3.3-latest``
 
 We also test against the latest commit of BoringSSL as well as versions of
 LibreSSL that are receiving security support at the time of a given
