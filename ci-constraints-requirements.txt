@@ -109,7 +109,7 @@ ruff==0.3.7
     # via cryptography (pyproject.toml)
 snowballstemmer==2.2.0
     # via sphinx
-sphinx==7.2.6
+sphinx==7.3.5
     # via
     #   cryptography (pyproject.toml)
     #   sphinx-rtd-theme
@@ -150,7 +150,7 @@ typing-extensions==4.11.0; python_version >= "3.8"
     # via mypy
 urllib3==2.2.1
     # via requests
-virtualenv==20.25.1
+virtualenv==20.25.3
     # via nox
 
 # The following packages are considered to be unsafe in a requirements file:
