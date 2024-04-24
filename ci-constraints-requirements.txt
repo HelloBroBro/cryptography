@@ -25,7 +25,7 @@ click==8.1.7
     # via cryptography (pyproject.toml)
 colorlog==6.8.2
     # via nox
-coverage==7.4.4; python_version >= "3.8"
+coverage==7.5.0; python_version >= "3.8"
     # via
     #   coverage
     #   pytest-cov
@@ -68,7 +68,7 @@ packaging==24.0
     #   sphinx
 pathspec==0.12.1
     # via check-sdist
-platformdirs==4.2.0; python_version >= "3.8"
+platformdirs==4.2.1; python_version >= "3.8"
     # via virtualenv
 pluggy==1.5.0; python_version >= "3.8"
     # via pytest
@@ -150,7 +150,7 @@ typing-extensions==4.11.0; python_version >= "3.8"
     # via mypy
 urllib3==2.2.1
     # via requests
-virtualenv==20.25.3
+virtualenv==20.26.0
     # via nox
 
 # The following packages are considered to be unsafe in a requirements file:
