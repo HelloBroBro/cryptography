@@ -9,7 +9,7 @@ alabaster==0.7.16
     # via sphinx
 argcomplete==3.3.0; python_version >= "3.8"
     # via nox
-babel==2.14.0
+babel==2.15.0
     # via sphinx
 build==1.2.1
     # via
@@ -25,7 +25,7 @@ click==8.1.7
     # via cryptography (pyproject.toml)
 colorlog==6.8.2
     # via nox
-coverage==7.5.0; python_version >= "3.8"
+coverage==7.5.1; python_version >= "3.8"
     # via
     #   coverage
     #   pytest-cov
@@ -80,7 +80,7 @@ pyenchant==3.2.2
     # via
     #   cryptography (pyproject.toml)
     #   sphinxcontrib-spelling
-pygments==2.17.2
+pygments==2.18.0
     # via
     #   readme-renderer
     #   sphinx
@@ -105,7 +105,7 @@ readme-renderer==43.0
     # via cryptography (pyproject.toml)
 requests==2.31.0
     # via sphinx
-ruff==0.4.2
+ruff==0.4.3
     # via cryptography (pyproject.toml)
 snowballstemmer==2.2.0
     # via sphinx
