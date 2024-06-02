@@ -15,7 +15,7 @@ build==1.2.1
     # via
     #   check-sdist
     #   cryptography (pyproject.toml)
-certifi==2024.2.2
+certifi==2024.6.2
     # via requests
 charset-normalizer==3.3.2
     # via requests
@@ -105,7 +105,7 @@ readme-renderer==43.0
     # via cryptography (pyproject.toml)
 requests==2.32.3
     # via sphinx
-ruff==0.4.6
+ruff==0.4.7
     # via cryptography (pyproject.toml)
 snowballstemmer==2.2.0
     # via sphinx
@@ -146,7 +146,7 @@ tomli==2.0.1
     #   mypy
     #   pyproject-hooks
     #   pytest
-typing-extensions==4.12.0; python_version >= "3.8"
+typing-extensions==4.12.1; python_version >= "3.8"
     # via mypy
 urllib3==2.2.1
     # via requests
