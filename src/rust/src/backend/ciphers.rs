@@ -10,13 +10,15 @@ use crate::types;
 use pyo3::types::{PyAnyMethods, PyModuleMethods};
 use pyo3::IntoPy;
 
-struct CipherContext {
+pub(crate) struct CipherContext {
     ctx: openssl::cipher_ctx::CipherCtx,
     py_mode: pyo3::PyObject,
+    py_algorithm: pyo3::PyObject,
+    side: openssl::symm::Mode,
 }
 
 impl CipherContext {
-    fn new(
+    pub(crate) fn new(
         py: pyo3::Python<'_>,
         algorithm: pyo3::Bound<'_, pyo3::PyAny>,
         mode: pyo3::Bound<'_, pyo3::PyAny>,
@@ -113,7 +115,42 @@ impl CipherContext {
         Ok(CipherContext {
             ctx,
             py_mode: mode.into(),
+            py_algorithm: algorithm.into(),
+            side,
         })
+    }
+
+    fn reset_nonce(&mut self, py: pyo3::Python<'_>, nonce: CffiBuf<'_>) -> CryptographyResult<()> {
+        if !self
+            .py_mode
+            .bind(py)
+            .is_instance(&types::MODE_WITH_NONCE.get(py)?)?
+            && !self
+                .py_algorithm
+                .bind(py)
+                .is_instance(&types::CHACHA20.get(py)?)?
+        {
+            return Err(CryptographyError::from(
+                exceptions::UnsupportedAlgorithm::new_err((
+                    "This algorithm or mode does not support resetting the nonce.",
+                    exceptions::Reasons::UNSUPPORTED_CIPHER,
+                )),
+            ));
+        }
+        if nonce.as_bytes().len() != self.ctx.iv_length() {
+            return Err(CryptographyError::from(
+                pyo3::exceptions::PyValueError::new_err(format!(
+                    "Nonce must be {} bytes long",
+                    self.ctx.iv_length()
+                )),
+            ));
+        }
+        let init_op = match self.side {
+            openssl::symm::Mode::Encrypt => openssl::cipher_ctx::CipherCtxRef::encrypt_init,
+            openssl::symm::Mode::Decrypt => openssl::cipher_ctx::CipherCtxRef::decrypt_init,
+        };
+        init_op(&mut self.ctx, None, None, Some(nonce.as_bytes()))?;
+        Ok(())
     }
 
     fn update<'p>(
@@ -126,7 +163,7 @@ impl CipherContext {
         Ok(pyo3::types::PyBytes::new_bound(py, &out_buf[..n]))
     }
 
-    fn update_into(
+    pub(crate) fn update_into(
         &mut self,
         py: pyo3::Python<'_>,
         buf: &[u8],
@@ -167,7 +204,7 @@ impl CipherContext {
         Ok(())
     }
 
-    fn finalize<'p>(
+    pub(crate) fn finalize<'p>(
         &mut self,
         py: pyo3::Python<'p>,
     ) -> CryptographyResult<pyo3::Bound<'p, pyo3::types::PyBytes>> {
@@ -234,6 +271,10 @@ impl PyCipherContext {
         buf: CffiBuf<'_>,
     ) -> CryptographyResult<pyo3::Bound<'p, pyo3::types::PyBytes>> {
         get_mut_ctx(self.ctx.as_mut())?.update(py, buf.as_bytes())
+    }
+
+    fn reset_nonce(&mut self, py: pyo3::Python<'_>, nonce: CffiBuf<'_>) -> CryptographyResult<()> {
+        get_mut_ctx(self.ctx.as_mut())?.reset_nonce(py, nonce)
     }
 
     fn update_into(
@@ -339,6 +380,10 @@ impl PyAEADEncryptionContext {
                 )
             })?
             .clone_ref(py))
+    }
+
+    fn reset_nonce(&mut self, py: pyo3::Python<'_>, nonce: CffiBuf<'_>) -> CryptographyResult<()> {
+        get_mut_ctx(self.ctx.as_mut())?.reset_nonce(py, nonce)
     }
 }
 
@@ -467,6 +512,10 @@ impl PyAEADDecryptionContext {
         let result = ctx.finalize(py)?;
         self.ctx = None;
         Ok(result)
+    }
+
+    fn reset_nonce(&mut self, py: pyo3::Python<'_>, nonce: CffiBuf<'_>) -> CryptographyResult<()> {
+        get_mut_ctx(self.ctx.as_mut())?.reset_nonce(py, nonce)
     }
 }
 
