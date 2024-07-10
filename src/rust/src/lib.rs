@@ -95,6 +95,8 @@ mod _rust {
     use pyo3::types::PyModuleMethods;
 
     #[pymodule_export]
+    use crate::asn1::asn1_mod;
+    #[pymodule_export]
     use crate::exceptions::exceptions;
     #[pymodule_export]
     use crate::oid::ObjectIdentifier;
@@ -105,6 +107,12 @@ mod _rust {
 
     #[pyo3::pymodule]
     mod x509 {
+        #[pymodule_export]
+        use crate::x509::verify::{
+            PolicyBuilder, PyClientVerifier, PyServerVerifier, PyStore, PyVerifiedClient,
+            VerificationError,
+        };
+
         #[pymodule_init]
         fn init(x509_mod: &pyo3::Bound<'_, pyo3::types::PyModule>) -> pyo3::PyResult<()> {
             crate::x509::certificate::add_to_module(x509_mod)?;
@@ -112,7 +120,6 @@ mod _rust {
             crate::x509::crl::add_to_module(x509_mod)?;
             crate::x509::csr::add_to_module(x509_mod)?;
             crate::x509::sct::add_to_module(x509_mod)?;
-            crate::x509::verify::add_to_module(x509_mod)?;
 
             Ok(())
         }
@@ -120,9 +127,11 @@ mod _rust {
 
     #[pyo3::pymodule]
     mod ocsp {
+        #[pymodule_export]
+        use crate::x509::ocsp_req::{create_ocsp_request, load_der_ocsp_request, OCSPRequest};
+
         #[pymodule_init]
         fn init(ocsp_mod: &pyo3::Bound<'_, pyo3::types::PyModule>) -> pyo3::PyResult<()> {
-            crate::x509::ocsp_req::add_to_module(ocsp_mod)?;
             crate::x509::ocsp_resp::add_to_module(ocsp_mod)?;
 
             Ok(())
@@ -178,9 +187,7 @@ mod _rust {
 
     #[pymodule_init]
     fn init(m: &pyo3::Bound<'_, pyo3::types::PyModule>) -> pyo3::PyResult<()> {
-        m.add_submodule(&crate::asn1::create_submodule(m.py())?)?;
         m.add_submodule(&crate::pkcs7::create_submodule(m.py())?)?;
-
         m.add_submodule(&cryptography_cffi::create_module(m.py())?)?;
 
         Ok(())
