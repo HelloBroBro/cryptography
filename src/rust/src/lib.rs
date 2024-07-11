@@ -104,38 +104,44 @@ mod _rust {
     use crate::padding::{check_ansix923_padding, check_pkcs7_padding, PKCS7PaddingContext};
     #[pymodule_export]
     use crate::pkcs12::pkcs12;
+    #[pymodule_export]
+    use crate::pkcs7::pkcs7_mod;
 
     #[pyo3::pymodule]
     mod x509 {
+        #[pymodule_export]
+        use crate::x509::certificate::{
+            create_x509_certificate, load_der_x509_certificate, load_pem_x509_certificate,
+            load_pem_x509_certificates, Certificate,
+        };
+        #[pymodule_export]
+        use crate::x509::common::{encode_extension_value, encode_name_bytes};
+        #[pymodule_export]
+        use crate::x509::crl::{
+            create_x509_crl, load_der_x509_crl, load_pem_x509_crl, CertificateRevocationList,
+            RevokedCertificate,
+        };
+        #[pymodule_export]
+        use crate::x509::csr::{
+            create_x509_csr, load_der_x509_csr, load_pem_x509_csr, CertificateSigningRequest,
+        };
+        #[pymodule_export]
+        use crate::x509::sct::Sct;
         #[pymodule_export]
         use crate::x509::verify::{
             PolicyBuilder, PyClientVerifier, PyServerVerifier, PyStore, PyVerifiedClient,
             VerificationError,
         };
-
-        #[pymodule_init]
-        fn init(x509_mod: &pyo3::Bound<'_, pyo3::types::PyModule>) -> pyo3::PyResult<()> {
-            crate::x509::certificate::add_to_module(x509_mod)?;
-            crate::x509::common::add_to_module(x509_mod)?;
-            crate::x509::crl::add_to_module(x509_mod)?;
-            crate::x509::csr::add_to_module(x509_mod)?;
-            crate::x509::sct::add_to_module(x509_mod)?;
-
-            Ok(())
-        }
     }
 
     #[pyo3::pymodule]
     mod ocsp {
         #[pymodule_export]
         use crate::x509::ocsp_req::{create_ocsp_request, load_der_ocsp_request, OCSPRequest};
-
-        #[pymodule_init]
-        fn init(ocsp_mod: &pyo3::Bound<'_, pyo3::types::PyModule>) -> pyo3::PyResult<()> {
-            crate::x509::ocsp_resp::add_to_module(ocsp_mod)?;
-
-            Ok(())
-        }
+        #[pymodule_export]
+        use crate::x509::ocsp_resp::{
+            create_ocsp_response, load_der_ocsp_response, OCSPResponse, OCSPSingleResponse,
+        };
     }
 
     #[pyo3::pymodule]
@@ -147,6 +153,40 @@ mod _rust {
         use super::super::enable_fips;
         #[pymodule_export]
         use super::super::{is_fips_enabled, openssl_version, openssl_version_text};
+        #[pymodule_export]
+        use crate::backend::aead::aead;
+        #[pymodule_export]
+        use crate::backend::ciphers::ciphers;
+        #[pymodule_export]
+        use crate::backend::cmac::cmac;
+        #[pymodule_export]
+        use crate::backend::dh::dh;
+        #[pymodule_export]
+        use crate::backend::dsa::dsa;
+        #[pymodule_export]
+        use crate::backend::ec::ec;
+        #[pymodule_export]
+        use crate::backend::ed25519::ed25519;
+        #[cfg(all(not(CRYPTOGRAPHY_IS_LIBRESSL), not(CRYPTOGRAPHY_IS_BORINGSSL)))]
+        #[pymodule_export]
+        use crate::backend::ed448::ed448;
+        #[pymodule_export]
+        use crate::backend::hashes::hashes;
+        #[pymodule_export]
+        use crate::backend::hmac::hmac;
+        #[pymodule_export]
+        use crate::backend::kdf::kdf;
+        #[pymodule_export]
+        use crate::backend::keys::keys;
+        #[pymodule_export]
+        use crate::backend::poly1305::poly1305;
+        #[pymodule_export]
+        use crate::backend::rsa::rsa;
+        #[pymodule_export]
+        use crate::backend::x25519::x25519;
+        #[cfg(all(not(CRYPTOGRAPHY_IS_LIBRESSL), not(CRYPTOGRAPHY_IS_BORINGSSL)))]
+        #[pymodule_export]
+        use crate::backend::x448::x448;
         #[pymodule_export]
         use crate::error::{capture_error_stack, raise_openssl_error, OpenSSLError};
 
@@ -179,15 +219,12 @@ mod _rust {
                 }
             }
 
-            crate::backend::add_to_module(openssl_mod)?;
-
             Ok(())
         }
     }
 
     #[pymodule_init]
     fn init(m: &pyo3::Bound<'_, pyo3::types::PyModule>) -> pyo3::PyResult<()> {
-        m.add_submodule(&crate::pkcs7::create_submodule(m.py())?)?;
         m.add_submodule(&cryptography_cffi::create_module(m.py())?)?;
 
         Ok(())
