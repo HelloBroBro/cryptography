@@ -83,7 +83,7 @@ tomli==2.0.1 \
     # via maturin
 
 # The following packages are considered to be unsafe in a requirements file:
-setuptools==71.0.1 \
-    --hash=sha256:1eb8ef012efae7f6acbc53ec0abde4bc6746c43087fd215ee09e1df48998711f \
-    --hash=sha256:c51d7fd29843aa18dad362d4b4ecd917022131425438251f4e3d766c964dd1ad
+setuptools==71.0.4 \
+    --hash=sha256:48297e5d393a62b7cb2a10b8f76c63a73af933bd809c9e0d0d6352a1a0135dd8 \
+    --hash=sha256:ed2feca703be3bdbd94e6bb17365d91c6935c6b2a8d0bb09b66a2c435ba0b1a5
     # via -r build-requirements.in
