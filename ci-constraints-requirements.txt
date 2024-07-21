@@ -86,7 +86,7 @@ pygments==2.18.0
     #   sphinx
 pyproject-hooks==1.1.0
     # via build
-pytest==8.2.2; python_version >= "3.8"
+pytest==8.3.1; python_version >= "3.8"
     # via
     #   cryptography (pyproject.toml)
     #   pytest-benchmark
@@ -105,11 +105,11 @@ readme-renderer==43.0
     # via cryptography (pyproject.toml)
 requests==2.32.3
     # via sphinx
-ruff==0.5.3
+ruff==0.5.4
     # via cryptography (pyproject.toml)
 snowballstemmer==2.2.0
     # via sphinx
-sphinx==7.4.6
+sphinx==7.4.7
     # via
     #   cryptography (pyproject.toml)
     #   sphinx-rtd-theme
@@ -126,13 +126,13 @@ sphinxcontrib-applehelp==1.0.8
     # via sphinx
 sphinxcontrib-devhelp==1.0.6
     # via sphinx
-sphinxcontrib-htmlhelp==2.0.5
+sphinxcontrib-htmlhelp==2.0.6
     # via sphinx
 sphinxcontrib-jquery==4.1
     # via sphinx-rtd-theme
 sphinxcontrib-jsmath==1.0.1
     # via sphinx
-sphinxcontrib-qthelp==1.0.7
+sphinxcontrib-qthelp==1.0.8
     # via sphinx
 sphinxcontrib-serializinghtml==1.1.10
     # via sphinx
