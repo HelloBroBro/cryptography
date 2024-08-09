@@ -9,7 +9,7 @@ alabaster==0.7.16
     # via sphinx
 argcomplete==3.5.0; python_version >= "3.8"
     # via nox
-babel==2.15.0
+babel==2.16.0
     # via sphinx
 build==1.2.1
     # via
@@ -105,7 +105,7 @@ readme-renderer==43.0
     # via cryptography (pyproject.toml)
 requests==2.32.3
     # via sphinx
-ruff==0.5.6
+ruff==0.5.7
     # via cryptography (pyproject.toml)
 snowballstemmer==2.2.0
     # via sphinx
