@@ -5,7 +5,7 @@
 # and then manually massaged to add version specifiers to packages whose
 # versions vary by Python version
 
-alabaster==0.7.16
+alabaster==1.0.0
     # via sphinx
 argcomplete==3.5.0; python_version >= "3.8"
     # via nox
@@ -31,7 +31,7 @@ coverage==7.6.1; python_version >= "3.8"
     #   pytest-cov
 distlib==0.3.8
     # via virtualenv
-docutils==0.20.1
+docutils==0.21.2
     # via
     #   readme-renderer
     #   sphinx
@@ -101,7 +101,7 @@ pytest-randomly==3.15.0
     # via cryptography (pyproject.toml)
 pytest-xdist==3.6.1; python_version >= "3.8"
     # via cryptography (pyproject.toml)
-readme-renderer==43.0
+readme-renderer==44.0
     # via cryptography (pyproject.toml)
 requests==2.32.3
     # via sphinx
@@ -109,7 +109,7 @@ ruff==0.6.3
     # via cryptography (pyproject.toml)
 snowballstemmer==2.2.0
     # via sphinx
-sphinx==7.4.7
+sphinx==8.0.2
     # via
     #   cryptography (pyproject.toml)
     #   sphinx-rtd-theme
@@ -120,7 +120,7 @@ sphinx==7.4.7
     #   sphinxcontrib-qthelp
     #   sphinxcontrib-serializinghtml
     #   sphinxcontrib-spelling
-sphinx-rtd-theme==2.0.0
+sphinx-rtd-theme==3.0.0rc1
     # via cryptography (pyproject.toml)
 sphinxcontrib-applehelp==2.0.0
     # via sphinx
