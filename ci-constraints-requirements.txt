@@ -69,7 +69,7 @@ filelock==3.12.2 ; python_full_version < '3.8'
     # via virtualenv
 filelock==3.16.0 ; python_full_version >= '3.8'
     # via virtualenv
-idna==3.8
+idna==3.9
     # via requests
 imagesize==1.4.1
     # via sphinx
@@ -124,7 +124,7 @@ pathspec==0.12.1 ; python_full_version >= '3.8'
     # via check-sdist
 platformdirs==4.0.0 ; python_full_version < '3.8'
     # via virtualenv
-platformdirs==4.3.2 ; python_full_version >= '3.8'
+platformdirs==4.3.3 ; python_full_version >= '3.8'
     # via virtualenv
 pluggy==1.2.0 ; python_full_version < '3.8'
     # via pytest
@@ -188,7 +188,7 @@ requests==2.31.0 ; python_full_version < '3.8'
     # via sphinx
 requests==2.32.3 ; python_full_version >= '3.8'
     # via sphinx
-ruff==0.6.4
+ruff==0.6.5
     # via cryptography (pyproject.toml)
 six==1.16.0 ; python_full_version < '3.8'
     # via bleach
@@ -263,7 +263,7 @@ typing-extensions==4.12.2 ; python_full_version >= '3.8'
     # via mypy
 urllib3==2.0.7 ; python_full_version < '3.8'
     # via requests
-urllib3==2.2.2 ; python_full_version >= '3.8'
+urllib3==2.2.3 ; python_full_version >= '3.8'
     # via requests
 virtualenv==20.26.4
     # via nox
