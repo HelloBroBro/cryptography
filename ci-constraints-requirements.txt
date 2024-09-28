@@ -188,7 +188,7 @@ requests==2.31.0 ; python_full_version < '3.8'
     # via sphinx
 requests==2.32.3 ; python_full_version >= '3.8'
     # via sphinx
-ruff==0.6.7
+ruff==0.6.8
     # via cryptography (pyproject.toml)
 six==1.16.0 ; python_full_version < '3.8'
     # via bleach
@@ -210,7 +210,7 @@ sphinx==8.0.2 ; python_full_version >= '3.10'
     #   sphinx-rtd-theme
     #   sphinxcontrib-jquery
     #   sphinxcontrib-spelling
-sphinx-rtd-theme==3.0.0rc2 ; python_full_version >= '3.8'
+sphinx-rtd-theme==3.0.0rc3 ; python_full_version >= '3.8'
     # via cryptography (pyproject.toml)
 sphinxcontrib-applehelp==1.0.2 ; python_full_version < '3.8'
     # via sphinx
