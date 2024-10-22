@@ -45,10 +45,10 @@ jobs:
           - {VERSION: "3.12", NOXSESSION: "rust,tests", OPENSSL: {TYPE: "libressl", VERSION: "3.9.2"}}
           - {VERSION: "3.12", NOXSESSION: "rust,tests", OPENSSL: {TYPE: "libressl", VERSION: "4.0.0"}}
           - {VERSION: "3.12", NOXSESSION: "tests-randomorder"}
-          # Latest commit on the BoringSSL master branch, as of Oct 17, 2024.
-          - {VERSION: "3.12", NOXSESSION: "rust,tests", OPENSSL: {TYPE: "boringssl", VERSION: "ee3f9468584b6607f944b885ad50db35a70daf8d"}}
-          # Latest commit on the OpenSSL master branch, as of Oct 18, 2024.
-          - {VERSION: "3.12", NOXSESSION: "tests", OPENSSL: {TYPE: "openssl", VERSION: "f4c467452694e1211395d17c2c027d99c35ee1e1"}}
+          # Latest commit on the BoringSSL master branch, as of Oct 22, 2024.
+          - {VERSION: "3.12", NOXSESSION: "rust,tests", OPENSSL: {TYPE: "boringssl", VERSION: "fb5b271624ec0344d4ec800b4f89dc84cada741a"}}
+          # Latest commit on the OpenSSL master branch, as of Oct 22, 2024.
+          - {VERSION: "3.12", NOXSESSION: "tests", OPENSSL: {TYPE: "openssl", VERSION: "1f0cb850473048eef5dc597d8cd42dd7c3cf5a5f"}}
           # Builds with various Rust versions. Includes MSRV and next
           # potential future MSRV.
           # - 1.70: crates.io sparse protocol by default
@@ -131,7 +131,7 @@ jobs:
           # pypy3-3.8 and pypy3-3.9 -- both of them show up as 7.3.11.
           key: ${{ matrix.PYTHON.VERSION }}-${{ steps.setup-python.outputs.python-version }}-${{ matrix.PYTHON.NOXSESSION }}-${{ env.OPENSSL_HASH }}
 
-      - run: python -m pip install -c ci-constraints-requirements.txt 'nox' 'tomli; python_version < "3.11"'
+      - run: python -m pip install -c ci-constraints-requirements.txt 'nox' 'nox[uv]; python_version >= "3.8"' 'tomli; python_version < "3.11"'
       - name: Create nox environment
         run: |
             nox -v --install-only
@@ -205,7 +205,7 @@ jobs:
       - run: |
           echo "OPENSSL_FORCE_FIPS_MODE=1" >> $GITHUB_ENV
         if: matrix.IMAGE.FIPS
-      - run: /venv/bin/python -m pip install -c ci-constraints-requirements.txt 'nox' 'tomli; python_version < "3.11"'
+      - run: /venv/bin/python -m pip install -c ci-constraints-requirements.txt 'nox' 'nox[uv]; python_version >= "3.8"' 'tomli; python_version < "3.11"'
       - run: '/venv/bin/nox -v --install-only'
         env:
           CARGO_TARGET_DIR: ${{ format('{0}/src/rust/target/', github.workspace) }}
@@ -256,7 +256,7 @@ jobs:
         timeout-minutes: 3
       - run: rustup component add llvm-tools-preview
 
-      - run: python -m pip install -c ci-constraints-requirements.txt 'nox' 'tomli; python_version < "3.11"'
+      - run: python -m pip install -c ci-constraints-requirements.txt 'nox' 'nox[uv]; python_version >= "3.8"' 'tomli; python_version < "3.11"'
 
       - name: Clone test vectors
         timeout-minutes: 2
@@ -321,7 +321,7 @@ jobs:
         timeout-minutes: 2
         with:
           key: ${{ matrix.PYTHON.NOXSESSION }}-${{ matrix.WINDOWS.ARCH }}-${{ steps.setup-python.outputs.python-version }}
-      - run: python -m pip install -c ci-constraints-requirements.txt "nox" "tomli; python_version < '3.11'"
+      - run: python -m pip install -c ci-constraints-requirements.txt "nox" "nox[uv]; python_version >= '3.8'" "tomli; python_version < '3.11'"
 
       - uses: dawidd6/action-download-artifact@bf251b5aa9c2f7eeb574a96ee720e24f801b7c11 # v6
         with:
