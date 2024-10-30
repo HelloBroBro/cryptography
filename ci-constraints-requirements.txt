@@ -170,7 +170,9 @@ pytest==8.3.3 ; python_full_version >= '3.8'
     #   pytest-cov
     #   pytest-randomly
     #   pytest-xdist
-pytest-benchmark==4.0.0
+pytest-benchmark==4.0.0 ; python_full_version < '3.9'
+    # via cryptography (pyproject.toml)
+pytest-benchmark==5.0.0 ; python_full_version >= '3.9'
     # via cryptography (pyproject.toml)
 pytest-cov==4.1.0 ; python_full_version < '3.8'
     # via cryptography (pyproject.toml)
@@ -288,11 +290,11 @@ urllib3==2.0.7 ; python_full_version < '3.8'
     # via requests
 urllib3==2.2.3 ; python_full_version >= '3.8'
     # via requests
-uv==0.4.27 ; python_full_version >= '3.8'
+uv==0.4.28 ; python_full_version >= '3.8'
     # via nox
 virtualenv==20.26.6 ; python_full_version < '3.8'
     # via nox
-virtualenv==20.27.0 ; python_full_version >= '3.8'
+virtualenv==20.27.1 ; python_full_version >= '3.8'
     # via nox
 webencodings==0.5.1 ; python_full_version < '3.8'
     # via bleach
