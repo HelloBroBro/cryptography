@@ -27,7 +27,7 @@ use once_cell::sync::Lazy;
 use crate::ops::CryptoOps;
 use crate::policy::extension::{ca, common, ee, Criticality, ExtensionPolicy, ExtensionValidator};
 use crate::types::{DNSName, DNSPattern, IPAddress};
-use crate::{ValidationError, VerificationCertificate};
+use crate::{ValidationError, ValidationResult, VerificationCertificate};
 
 // RSA key constraints, as defined in CA/B 6.1.5.
 static WEBPKI_MINIMUM_RSA_MODULUS: usize = 2048;
@@ -373,7 +373,7 @@ impl<'a, B: CryptoOps> Policy<'a, B> {
         )
     }
 
-    fn permits_basic(&self, cert: &Certificate<'_>) -> Result<(), ValidationError> {
+    fn permits_basic(&self, cert: &Certificate<'_>) -> ValidationResult<()> {
         // CA/B 7.1.1:
         // Certificates MUST be of type X.509 v3.
         if cert.tbs_cert.version != 2 {
@@ -441,7 +441,7 @@ impl<'a, B: CryptoOps> Policy<'a, B> {
         cert: &Certificate<'_>,
         current_depth: u8,
         extensions: &Extensions<'_>,
-    ) -> Result<(), ValidationError> {
+    ) -> ValidationResult<()> {
         self.permits_basic(cert)?;
 
         // 5280 4.1.2.6: Subject
@@ -480,7 +480,7 @@ impl<'a, B: CryptoOps> Policy<'a, B> {
         &self,
         cert: &Certificate<'_>,
         extensions: &Extensions<'_>,
-    ) -> Result<(), ValidationError> {
+    ) -> ValidationResult<()> {
         self.permits_basic(cert)?;
 
         self.ee_extension_policy.permits(self, cert, extensions)?;
@@ -504,10 +504,10 @@ impl<'a, B: CryptoOps> Policy<'a, B> {
     pub(crate) fn valid_issuer(
         &self,
         issuer: &VerificationCertificate<'_, B>,
-        child: &Certificate<'_>,
+        child: &VerificationCertificate<'_, B>,
         current_depth: u8,
         issuer_extensions: &Extensions<'_>,
-    ) -> Result<(), ValidationError> {
+    ) -> ValidationResult<()> {
         // The issuer needs to be a valid CA at the current depth.
         self.permits_ca(issuer.certificate(), current_depth, issuer_extensions)?;
 
@@ -520,7 +520,7 @@ impl<'a, B: CryptoOps> Policy<'a, B> {
         {
             return Err(ValidationError::Other(format!(
                 "Forbidden public key algorithm: {:?}",
-                &child.tbs_cert.spki.algorithm
+                &issuer.certificate().tbs_cert.spki.algorithm
             )));
         }
 
@@ -532,11 +532,11 @@ impl<'a, B: CryptoOps> Policy<'a, B> {
         // position).
         if !self
             .permitted_signature_algorithms
-            .contains(&child.signature_alg)
+            .contains(&child.certificate().signature_alg)
         {
             return Err(ValidationError::Other(format!(
                 "Forbidden signature algorithm: {:?}",
-                &child.signature_alg
+                &child.certificate().signature_alg
             )));
         }
 
@@ -559,7 +559,7 @@ impl<'a, B: CryptoOps> Policy<'a, B> {
         let pk = issuer
             .public_key(&self.ops)
             .map_err(|_| ValidationError::Other("issuer has malformed public key".to_string()))?;
-        if self.ops.verify_signed_by(child, pk).is_err() {
+        if self.ops.verify_signed_by(child.certificate(), pk).is_err() {
             return Err(ValidationError::Other(
                 "signature does not match".to_string(),
             ));
@@ -569,7 +569,7 @@ impl<'a, B: CryptoOps> Policy<'a, B> {
     }
 }
 
-fn permits_validity_date(validity_date: &Time) -> Result<(), ValidationError> {
+fn permits_validity_date(validity_date: &Time) -> ValidationResult<()> {
     const GENERALIZED_DATE_INVALIDITY_RANGE: Range<u16> = 1950..2050;
 
     // NOTE: The inverse check on `asn1::UtcTime` is already done for us
