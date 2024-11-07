@@ -6443,7 +6443,7 @@ class TestProfessionInfo:
             x509.ProfessionInfo(
                 None,
                 None,  # type:ignore[arg-type]
-                None,  # type:ignore[arg-type]
+                None,
                 None,
                 None,
             )
@@ -6491,6 +6491,10 @@ class TestProfessionInfo:
     def test_eq(self):
         info1 = x509.ProfessionInfo(None, [], [], None, None)
         info2 = x509.ProfessionInfo(None, [], [], None, None)
+        assert info1 == info2
+
+        info1 = x509.ProfessionInfo(None, [], None, None, None)
+        info2 = x509.ProfessionInfo(None, [], None, None, None)
         assert info1 == info2
 
         info1 = x509.ProfessionInfo(
@@ -6566,6 +6570,7 @@ class TestProfessionInfo:
         info8 = x509.ProfessionInfo(None, [], [], "spam", None)
         info9 = x509.ProfessionInfo(None, [], [], None, b"\x01\x02\x03")
         info10 = x509.ProfessionInfo(None, [], [], None, None)
+        info11 = x509.ProfessionInfo(None, [], None, None, None)
 
         assert info1 != info2
         assert info1 != info2
@@ -6577,6 +6582,7 @@ class TestProfessionInfo:
         assert info1 != info8
         assert info1 != info9
         assert info1 != info10
+        assert info1 != info11
         assert info1 != object()
 
     def test_repr(self):
@@ -6586,6 +6592,16 @@ class TestProfessionInfo:
             "naming_authority=None, "
             "profession_items=[], "
             "profession_oids=[], "
+            "registration_number=None, "
+            "add_profession_info=None)>"
+        )
+
+        info = x509.ProfessionInfo(None, [], None, None, None)
+        assert repr(info) == (
+            "<ProfessionInfo("
+            "naming_authority=None, "
+            "profession_items=[], "
+            "profession_oids=None, "
             "registration_number=None, "
             "add_profession_info=None)>"
         )
@@ -6659,6 +6675,10 @@ class TestProfessionInfo:
         info7 = x509.ProfessionInfo(
             x509.NamingAuthority(None, None, None), [], [], None, None
         )
+        info8 = x509.ProfessionInfo(
+            x509.NamingAuthority(None, None, None), [], None, None, None
+        )
+        info9 = x509.ProfessionInfo(None, [], None, None, None)
 
         assert hash(info1) == hash(info2)
         assert hash(info1) != hash(info3)
@@ -6666,6 +6686,8 @@ class TestProfessionInfo:
         assert hash(info1) != hash(info5)
         assert hash(info1) != hash(info6)
         assert hash(info1) != hash(info7)
+        assert hash(info1) != hash(info8)
+        assert hash(info1) != hash(info9)
 
 
 class TestAdmission:
@@ -7093,6 +7115,161 @@ class TestAdmissions:
         assert hash(admissions1) != hash(admissions3)
         assert hash(admissions1) != hash(admissions4)
         assert hash(admissions1) != hash(admissions5)
+
+    def test_public_bytes(self):
+        ext = x509.Admissions(None, [])
+        assert ext.public_bytes() == b"0\x020\x00"
+
+        ext = x509.Admissions(
+            x509.UniformResourceIdentifier(value="https://www.example.com/"),
+            [],
+        )
+        assert (
+            ext.public_bytes() == b"0\x1c\x86\x18https://www.example.com/0\x00"
+        )
+
+        # test for encoding none values
+        ext = x509.Admissions(
+            None,
+            [
+                x509.Admission(
+                    None,
+                    x509.NamingAuthority(None, None, None),
+                    [x509.ProfessionInfo(None, [], [], None, None)],
+                ),
+                x509.Admission(
+                    None,
+                    None,
+                    [
+                        x509.ProfessionInfo(
+                            x509.NamingAuthority(None, None, None),
+                            [],
+                            [],
+                            None,
+                            None,
+                        )
+                    ],
+                ),
+            ],
+        )
+        assert ext.public_bytes() == (
+            b"0\x1e0\x1c0\x0c\xa1\x020\x000\x060\x040\x000\x000\x0c0\n0\x08\xa0\x020\x000\x000\x00"
+        )
+
+        # example values taken from https://gemspec.gematik.de/downloads/gemSpec/gemSpec_OID/gemSpec_OID_V3.17.0.pdf
+        ext = x509.Admissions(
+            authority=x509.DirectoryName(
+                value=x509.Name(
+                    [
+                        x509.NameAttribute(
+                            x509.oid.NameOID.COUNTRY_NAME, "DE"
+                        ),
+                        x509.NameAttribute(
+                            x509.NameOID.ORGANIZATIONAL_UNIT_NAME,
+                            "Elektronisches Gesundheitsberuferegister",
+                        ),
+                    ]
+                )
+            ),
+            admissions=[
+                x509.Admission(
+                    admission_authority=x509.DNSName("gematik.de"),
+                    naming_authority=x509.NamingAuthority(
+                        x509.ObjectIdentifier("1.2.276.0.76.3.1.91"),
+                        "https://gematik.de/",
+                        (
+                            "Gesellschaft für Telematikanwendungen "
+                            "der Gesundheitskarte mbH"
+                        ),
+                    ),
+                    profession_infos=[
+                        x509.ProfessionInfo(
+                            naming_authority=x509.NamingAuthority(
+                                x509.ObjectIdentifier("1.2.276.0.76.3.1.1"),
+                                "https://www.kbv.de/",
+                                "KBV Kassenärztliche Bundesvereinigung",
+                            ),
+                            registration_number="123456789",
+                            profession_items=[
+                                "Ärztin/Arzt",
+                                (
+                                    "Orthopädieschuhmacher/-in "
+                                    "und Orthopädietechniker/-in"
+                                ),
+                            ],
+                            profession_oids=[
+                                x509.ObjectIdentifier("1.2.276.0.76.4.30"),
+                                x509.ObjectIdentifier("1.2.276.0.76.4.305"),
+                            ],
+                            # DER-encoded:
+                            # `OtherName(
+                            #   type_id=ObjectIdentifier('1.2.276.0.76.4.60'),
+                            #   value=b'\x0c\x1dProbe-Client Broker-Betreiber'
+                            # )`
+                            add_profession_info=(
+                                b"\xa0*\x06\x07*\x82\x14\x00L\x04<\xa0\x1f"
+                                b"\x0c\x1dProbe-Client Broker-Betreiber"
+                            ),
+                        )
+                    ],
+                ),
+            ],
+        )
+        assert ext.public_bytes() == (
+            b"0\x82\x01\xa6\xa4B0@1\x0b0\t\x06\x03U\x04\x06\x13\x02DE110/\x06"
+            b"\x03U\x04\x0b\x0c(Elektronisches Gesundheitsberuferegister0\x82"
+            b"\x01^0\x82\x01Z\xa0\x0c\x82\ngematik.de\xa1b0`\x06\x08*\x82\x14"
+            b"\x00L\x03\x01[\x16\x13https://gematik.de/\x0c?Gesellschaft f\xc3"
+            b"\xbcr Telematikanwendungen der Gesundheitskarte mbH0\x81\xe50"
+            b"\x81\xe2\xa0I0G\x06\x08*\x82\x14\x00L\x03\x01\x01\x16\x13https://www."
+            b"kbv.de/\x0c&KBV Kassen\xc3\xa4rztliche Bundesvereinigung0G\x0c"
+            b"\x0c\xc3\x84rztin/Arzt\x0c7Orthop\xc3\xa4dieschuhmacher/-in und "
+            b"Orthop\xc3\xa4dietechniker/-in0\x13\x06\x07*\x82\x14\x00L\x04\x1e"
+            b"\x06\x08*\x82\x14\x00L\x04\x821\x13\t123456789\x04,\xa0*\x06"
+            b"\x07*\x82\x14\x00L\x04<\xa0\x1f\x0c\x1dProbe-Client Broker-"
+            b"Betreiber"
+        )
+
+        # test for non-ascii url value in naming authority
+        ext = x509.Admissions(
+            None,
+            [
+                x509.Admission(
+                    None,
+                    x509.NamingAuthority(None, "😄", None),
+                    [],
+                ),
+            ],
+        )
+        with pytest.raises(ValueError):
+            ext.public_bytes()
+
+        # test for non-ascii registration number value in profession info
+        ext = x509.Admissions(
+            None,
+            [
+                x509.Admission(
+                    None,
+                    None,
+                    [x509.ProfessionInfo(None, [], [], "\x00", None)],
+                ),
+            ],
+        )
+        with pytest.raises(ValueError):
+            ext.public_bytes()
+
+        # test that none passed for `profession_oids` is encoded as none
+        ext = x509.Admissions(
+            None,
+            [
+                x509.Admission(
+                    None,
+                    None,
+                    [x509.ProfessionInfo(None, [], None, None, None)],
+                ),
+            ],
+        )
+        assert ext.public_bytes() == b"0\n0\x080\x060\x040\x020\x00"
 
 
 def test_all_extension_oid_members_have_names_defined():

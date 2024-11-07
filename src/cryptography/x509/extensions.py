@@ -892,9 +892,7 @@ class PolicyInformation:
 
     def __hash__(self) -> int:
         if self.policy_qualifiers is not None:
-            pq: tuple[str | UserNotice, ...] | None = tuple(
-                self.policy_qualifiers
-            )
+            pq = tuple(self.policy_qualifiers)
         else:
             pq = None
 
@@ -2227,7 +2225,7 @@ class ProfessionInfo:
         self,
         naming_authority: NamingAuthority | None,
         profession_items: typing.Iterable[str],
-        profession_oids: typing.Iterable[ObjectIdentifier],
+        profession_oids: typing.Iterable[ObjectIdentifier] | None,
         registration_number: str | None,
         add_profession_info: bytes | None,
     ) -> None:
@@ -2242,14 +2240,15 @@ class ProfessionInfo:
                 "Every item in the profession_items list must be a str"
             )
 
-        profession_oids = list(profession_oids)
-        if not all(
-            isinstance(oid, ObjectIdentifier) for oid in profession_oids
-        ):
-            raise TypeError(
-                "Every item in the profession_oids list must be an "
-                "ObjectIdentifier"
-            )
+        if profession_oids is not None:
+            profession_oids = list(profession_oids)
+            if not all(
+                isinstance(oid, ObjectIdentifier) for oid in profession_oids
+            ):
+                raise TypeError(
+                    "Every item in the profession_oids list must be an "
+                    "ObjectIdentifier"
+                )
 
         if registration_number is not None and not isinstance(
             registration_number, str
@@ -2276,7 +2275,7 @@ class ProfessionInfo:
         return self._profession_items
 
     @property
-    def profession_oids(self) -> list[ObjectIdentifier]:
+    def profession_oids(self) -> list[ObjectIdentifier] | None:
         return self._profession_oids
 
     @property
@@ -2309,11 +2308,15 @@ class ProfessionInfo:
         )
 
     def __hash__(self) -> int:
+        if self.profession_oids is not None:
+            profession_oids = tuple(self.profession_oids)
+        else:
+            profession_oids = None
         return hash(
             (
                 self.naming_authority,
-                *tuple(self.profession_items),
-                *tuple(self.profession_oids),
+                tuple(self.profession_items),
+                profession_oids,
                 self.registration_number,
                 self.add_profession_info,
             )
@@ -2384,7 +2387,7 @@ class Admission:
             (
                 self.admission_authority,
                 self.naming_authority,
-                *tuple(self.profession_infos),
+                tuple(self.profession_infos),
             )
         )
 
@@ -2434,7 +2437,10 @@ class Admissions(ExtensionType):
         )
 
     def __hash__(self) -> int:
-        return hash((self.authority, *tuple(self._admissions)))
+        return hash((self.authority, tuple(self._admissions)))
+
+    def public_bytes(self) -> bytes:
+        return rust_x509.encode_extension_value(self)
 
 
 class UnrecognizedExtension(ExtensionType):
