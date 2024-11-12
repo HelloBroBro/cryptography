@@ -200,6 +200,10 @@ mod _rust {
                 cfg!(CRYPTOGRAPHY_OPENSSL_300_OR_GREATER),
             )?;
             openssl_mod.add(
+                "CRYPTOGRAPHY_OPENSSL_309_OR_GREATER",
+                cfg!(CRYPTOGRAPHY_OPENSSL_309_OR_GREATER),
+            )?;
+            openssl_mod.add(
                 "CRYPTOGRAPHY_OPENSSL_320_OR_GREATER",
                 cfg!(CRYPTOGRAPHY_OPENSSL_320_OR_GREATER),
             )?;
@@ -219,6 +223,20 @@ mod _rust {
                 } else {
                     // default value for non-openssl 3+
                     openssl_mod.add("_legacy_provider_loaded", false)?;
+                }
+            }
+            cfg_if::cfg_if! {
+                if #[cfg(CRYPTOGRAPHY_OPENSSL_320_OR_GREATER)] {
+                    use std::ptr;
+                    use std::cmp::max;
+
+                    let available = std::thread::available_parallelism().map_or(0, |v| v.get() as u64);
+                    // SAFETY: This sets a libctx provider limit, but we always use the same libctx by passing NULL.
+                    unsafe {
+                        let current = openssl_sys::OSSL_get_max_threads(ptr::null_mut());
+                        // Set the thread limit to the max of available parallelism or current limit.
+                        openssl_sys::OSSL_set_max_threads(ptr::null_mut(), max(available, current));
+                    }
                 }
             }
 

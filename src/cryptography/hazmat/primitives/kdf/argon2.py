@@ -4,16 +4,10 @@
 
 from __future__ import annotations
 
-import sys
-
 from cryptography.hazmat.bindings._rust import openssl as rust_openssl
 from cryptography.hazmat.primitives.kdf import KeyDerivationFunction
 
-# This is used by the scrypt tests to skip tests that require more memory
-# than the MEM_LIMIT
-_MEM_LIMIT = sys.maxsize // 2
+Argon2id = rust_openssl.kdf.Argon2id
+KeyDerivationFunction.register(Argon2id)
 
-Scrypt = rust_openssl.kdf.Scrypt
-KeyDerivationFunction.register(Scrypt)
-
-__all__ = ["Scrypt"]
+__all__ = ["Argon2id"]
