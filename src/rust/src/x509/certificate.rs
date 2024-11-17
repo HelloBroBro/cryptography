@@ -500,10 +500,10 @@ fn parse_display_text(
     }
 }
 
-fn parse_user_notice(
-    py: pyo3::Python<'_>,
+fn parse_user_notice<'p>(
+    py: pyo3::Python<'p>,
     un: UserNotice<'_>,
-) -> Result<pyo3::PyObject, CryptographyError> {
+) -> CryptographyResult<pyo3::Bound<'p, pyo3::PyAny>> {
     let et = match un.explicit_text {
         Some(data) => parse_display_text(py, data)?,
         None => py.None(),
@@ -515,28 +515,23 @@ fn parse_user_notice(
             for num in data.notice_numbers.unwrap_read().clone() {
                 numbers.append(big_byte_slice_to_py_int(py, num.as_bytes())?)?;
             }
-            types::NOTICE_REFERENCE
-                .get(py)?
-                .call1((org, numbers))?
-                .unbind()
+            types::NOTICE_REFERENCE.get(py)?.call1((org, numbers))?
         }
-        None => py.None(),
+        None => py.None().into_bound(py),
     };
-    Ok(types::USER_NOTICE.get(py)?.call1((nr, et))?.unbind())
+    Ok(types::USER_NOTICE.get(py)?.call1((nr, et))?)
 }
 
 fn parse_policy_qualifiers<'a>(
-    py: pyo3::Python<'_>,
+    py: pyo3::Python<'a>,
     policy_qualifiers: &asn1::SequenceOf<'a, PolicyQualifierInfo<'a>>,
-) -> Result<pyo3::PyObject, CryptographyError> {
+) -> CryptographyResult<pyo3::Bound<'a, pyo3::PyAny>> {
     let py_pq = pyo3::types::PyList::empty(py);
     for pqi in policy_qualifiers.clone() {
         let qualifier = match pqi.qualifier {
             Qualifier::CpsUri(data) => {
                 if pqi.policy_qualifier_id == oid::CP_CPS_URI_OID {
-                    pyo3::types::PyString::new(py, data.as_str())
-                        .into_any()
-                        .unbind()
+                    pyo3::types::PyString::new(py, data.as_str()).into_any()
                 } else {
                     return Err(CryptographyError::from(
                         pyo3::exceptions::PyValueError::new_err(
@@ -558,13 +553,13 @@ fn parse_policy_qualifiers<'a>(
         };
         py_pq.append(qualifier)?;
     }
-    Ok(py_pq.into_any().unbind())
+    Ok(py_pq.into_any())
 }
 
-fn parse_cp(
-    py: pyo3::Python<'_>,
+fn parse_cp<'p>(
+    py: pyo3::Python<'p>,
     ext: &Extension<'_>,
-) -> Result<pyo3::PyObject, CryptographyError> {
+) -> CryptographyResult<pyo3::Bound<'p, pyo3::PyAny>> {
     let cp = ext.value::<asn1::SequenceOf<'_, PolicyInformation<'_>>>()?;
     let certificate_policies = pyo3::types::PyList::empty(py);
     for policyinfo in cp {
@@ -573,79 +568,79 @@ fn parse_cp(
             Some(policy_qualifiers) => {
                 parse_policy_qualifiers(py, policy_qualifiers.unwrap_read())?
             }
-            None => py.None(),
+            None => py.None().into_bound(py),
         };
         let pi = types::POLICY_INFORMATION
             .get(py)?
             .call1((pi_oid, py_pqis))?;
         certificate_policies.append(pi)?;
     }
-    Ok(certificate_policies.into_any().unbind())
+    Ok(certificate_policies.into_any())
 }
 
-fn parse_general_subtrees(
-    py: pyo3::Python<'_>,
+fn parse_general_subtrees<'p>(
+    py: pyo3::Python<'p>,
     subtrees: SequenceOfSubtrees<'_>,
-) -> Result<pyo3::PyObject, CryptographyError> {
+) -> CryptographyResult<pyo3::Bound<'p, pyo3::PyAny>> {
     let gns = pyo3::types::PyList::empty(py);
     for gs in subtrees.unwrap_read().clone() {
         gns.append(x509::parse_general_name(py, gs.base)?)?;
     }
-    Ok(gns.into_any().unbind())
+    Ok(gns.into_any())
 }
 
-pub(crate) fn parse_distribution_point_name(
-    py: pyo3::Python<'_>,
-    dp: DistributionPointName<'_>,
-) -> Result<(pyo3::PyObject, pyo3::PyObject), CryptographyError> {
+pub(crate) fn parse_distribution_point_name<'p>(
+    py: pyo3::Python<'p>,
+    dp: DistributionPointName<'p>,
+) -> CryptographyResult<(pyo3::Bound<'p, pyo3::PyAny>, pyo3::Bound<'p, pyo3::PyAny>)> {
     Ok(match dp {
         DistributionPointName::FullName(data) => (
             x509::parse_general_names(py, data.unwrap_read())?,
-            py.None(),
+            py.None().into_bound(py),
         ),
-        DistributionPointName::NameRelativeToCRLIssuer(data) => {
-            (py.None(), x509::parse_rdn(py, data.unwrap_read())?)
-        }
+        DistributionPointName::NameRelativeToCRLIssuer(data) => (
+            py.None().into_bound(py),
+            x509::parse_rdn(py, data.unwrap_read())?,
+        ),
     })
 }
 
-fn parse_distribution_point(
-    py: pyo3::Python<'_>,
-    dp: DistributionPoint<'_>,
-) -> Result<pyo3::PyObject, CryptographyError> {
+fn parse_distribution_point<'p>(
+    py: pyo3::Python<'p>,
+    dp: DistributionPoint<'p>,
+) -> CryptographyResult<pyo3::Bound<'p, pyo3::PyAny>> {
     let (full_name, relative_name) = match dp.distribution_point {
         Some(data) => parse_distribution_point_name(py, data)?,
-        None => (py.None(), py.None()),
+        None => (py.None().into_bound(py), py.None().into_bound(py)),
     };
     let reasons =
         parse_distribution_point_reasons(py, dp.reasons.as_ref().map(|v| v.unwrap_read()))?;
     let crl_issuer = match dp.crl_issuer {
         Some(aci) => x509::parse_general_names(py, aci.unwrap_read())?,
-        None => py.None(),
+        None => py.None().into_bound(py),
     };
     Ok(types::DISTRIBUTION_POINT
         .get(py)?
-        .call1((full_name, relative_name, reasons, crl_issuer))?
-        .unbind())
+        .call1((full_name, relative_name, reasons, crl_issuer))?)
 }
 
-pub(crate) fn parse_distribution_points(
-    py: pyo3::Python<'_>,
+pub(crate) fn parse_distribution_points<'p>(
+    py: pyo3::Python<'p>,
     ext: &Extension<'_>,
-) -> Result<pyo3::PyObject, CryptographyError> {
+) -> CryptographyResult<pyo3::Bound<'p, pyo3::PyAny>> {
     let dps = ext.value::<asn1::SequenceOf<'_, DistributionPoint<'_>>>()?;
     let py_dps = pyo3::types::PyList::empty(py);
     for dp in dps {
         let py_dp = parse_distribution_point(py, dp)?;
         py_dps.append(py_dp)?;
     }
-    Ok(py_dps.into_any().unbind())
+    Ok(py_dps.into_any())
 }
 
-pub(crate) fn parse_distribution_point_reasons(
-    py: pyo3::Python<'_>,
+pub(crate) fn parse_distribution_point_reasons<'p>(
+    py: pyo3::Python<'p>,
     reasons: Option<&asn1::BitString<'_>>,
-) -> Result<pyo3::PyObject, CryptographyError> {
+) -> CryptographyResult<pyo3::Bound<'p, pyo3::PyAny>> {
     let reason_bit_mapping = types::REASON_BIT_MAPPING.get(py)?;
 
     Ok(match reasons {
@@ -656,9 +651,9 @@ pub(crate) fn parse_distribution_point_reasons(
                     vec.push(reason_bit_mapping.get_item(i)?);
                 }
             }
-            pyo3::types::PyFrozenSet::new(py, &vec)?.into_any().unbind()
+            pyo3::types::PyFrozenSet::new(py, &vec)?.into_any()
         }
-        None => py.None(),
+        None => py.None().into_bound(py),
     })
 }
 
@@ -684,7 +679,7 @@ pub(crate) fn encode_distribution_point_reasons(
 
 pub(crate) fn parse_authority_key_identifier<'p>(
     py: pyo3::Python<'p>,
-    ext: &Extension<'_>,
+    ext: &Extension<'p>,
 ) -> Result<pyo3::Bound<'p, pyo3::PyAny>, CryptographyError> {
     let aki = ext.value::<AuthorityKeyIdentifier<'_>>()?;
     let serial = match aki.authority_cert_serial_number {
@@ -693,26 +688,26 @@ pub(crate) fn parse_authority_key_identifier<'p>(
     };
     let issuer = match aki.authority_cert_issuer {
         Some(aci) => x509::parse_general_names(py, aci.unwrap_read())?,
-        None => py.None(),
+        None => py.None().into_bound(py),
     };
     Ok(types::AUTHORITY_KEY_IDENTIFIER
         .get(py)?
         .call1((aki.key_identifier, issuer, serial))?)
 }
 
-pub(crate) fn parse_access_descriptions(
-    py: pyo3::Python<'_>,
+pub(crate) fn parse_access_descriptions<'p>(
+    py: pyo3::Python<'p>,
     ext: &Extension<'_>,
-) -> Result<pyo3::PyObject, CryptographyError> {
+) -> CryptographyResult<pyo3::Bound<'p, pyo3::PyAny>> {
     let ads = pyo3::types::PyList::empty(py);
     let parsed = ext.value::<SequenceOfAccessDescriptions<'_>>()?;
     for access in parsed.unwrap_read().clone() {
-        let py_oid = oid_to_py_oid(py, &access.access_method)?.unbind();
+        let py_oid = oid_to_py_oid(py, &access.access_method)?;
         let gn = x509::parse_general_name(py, access.access_location)?;
         let ad = types::ACCESS_DESCRIPTION.get(py)?.call1((py_oid, gn))?;
         ads.append(ad)?;
     }
-    Ok(ads.into_any().unbind())
+    Ok(ads.into_any())
 }
 
 fn parse_naming_authority<'p>(
@@ -791,7 +786,7 @@ fn parse_admissions<'p, 'a>(
     for admission in admissions.clone() {
         let py_admission_authority = match admission.admission_authority {
             Some(authority) => x509::parse_general_name(py, authority)?,
-            None => py.None(),
+            None => py.None().into_bound(py),
         };
         let py_naming_authority = match admission.naming_authority {
             Some(data) => parse_naming_authority(py, data)?,
@@ -811,7 +806,7 @@ fn parse_admissions<'p, 'a>(
 
 pub fn parse_cert_ext<'p>(
     py: pyo3::Python<'p>,
-    ext: &Extension<'_>,
+    ext: &Extension<'p>,
 ) -> CryptographyResult<Option<pyo3::Bound<'p, pyo3::PyAny>>> {
     match ext.extn_id {
         oid::SUBJECT_ALTERNATIVE_NAME_OID => {
@@ -926,11 +921,11 @@ pub fn parse_cert_ext<'p>(
             let nc = ext.value::<NameConstraints<'_>>()?;
             let permitted_subtrees = match nc.permitted_subtrees {
                 Some(data) => parse_general_subtrees(py, data)?,
-                None => py.None(),
+                None => py.None().into_bound(py),
             };
             let excluded_subtrees = match nc.excluded_subtrees {
                 Some(data) => parse_general_subtrees(py, data)?,
-                None => py.None(),
+                None => py.None().into_bound(py),
             };
             Ok(Some(
                 types::NAME_CONSTRAINTS
@@ -951,7 +946,7 @@ pub fn parse_cert_ext<'p>(
             let admissions = ext.value::<Admissions<'_>>()?;
             let admission_authority = match admissions.admission_authority {
                 Some(authority) => x509::parse_general_name(py, authority)?,
-                None => py.None(),
+                None => py.None().into_bound(py),
             };
             let py_admissions =
                 parse_admissions(py, admissions.contents_of_admissions.unwrap_read())?;

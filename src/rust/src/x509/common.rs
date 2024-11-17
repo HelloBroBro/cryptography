@@ -193,10 +193,10 @@ pub(crate) fn parse_name<'p>(
     Ok(types::NAME.get(py)?.call1((py_rdns,))?)
 }
 
-fn parse_name_attribute(
-    py: pyo3::Python<'_>,
+fn parse_name_attribute<'p>(
+    py: pyo3::Python<'p>,
     attribute: AttributeTypeValue<'_>,
-) -> Result<pyo3::PyObject, CryptographyError> {
+) -> CryptographyResult<pyo3::Bound<'p, pyo3::PyAny>> {
     let oid = oid_to_py_oid(py, &attribute.type_id)?;
     let tag_val = attribute.value.tag().as_u8().ok_or_else(|| {
         CryptographyError::from(pyo3::exceptions::PyValueError::new_err(
@@ -226,14 +226,13 @@ fn parse_name_attribute(
     let kwargs = [(pyo3::intern!(py, "_validate"), false)].into_py_dict(py)?;
     Ok(types::NAME_ATTRIBUTE
         .get(py)?
-        .call((oid, py_data, py_tag), Some(&kwargs))?
-        .unbind())
+        .call((oid, py_data, py_tag), Some(&kwargs))?)
 }
 
 pub(crate) fn parse_rdn<'a>(
-    py: pyo3::Python<'_>,
+    py: pyo3::Python<'a>,
     rdn: &asn1::SetOf<'a, AttributeTypeValue<'a>>,
-) -> Result<pyo3::PyObject, CryptographyError> {
+) -> CryptographyResult<pyo3::Bound<'a, pyo3::PyAny>> {
     let py_attrs = pyo3::types::PyList::empty(py);
     for attribute in rdn.clone() {
         let na = parse_name_attribute(py, attribute)?;
@@ -241,42 +240,37 @@ pub(crate) fn parse_rdn<'a>(
     }
     Ok(types::RELATIVE_DISTINGUISHED_NAME
         .get(py)?
-        .call1((py_attrs,))?
-        .unbind())
+        .call1((py_attrs,))?)
 }
 
-pub(crate) fn parse_general_name(
-    py: pyo3::Python<'_>,
+pub(crate) fn parse_general_name<'p>(
+    py: pyo3::Python<'p>,
     gn: GeneralName<'_>,
-) -> Result<pyo3::PyObject, CryptographyError> {
+) -> CryptographyResult<pyo3::Bound<'p, pyo3::PyAny>> {
     let py_gn = match gn {
         GeneralName::OtherName(data) => {
             let oid = oid_to_py_oid(py, &data.type_id)?;
             types::OTHER_NAME
                 .get(py)?
                 .call1((oid, data.value.full_data()))?
-                .unbind()
         }
         GeneralName::RFC822Name(data) => types::RFC822_NAME
             .get(py)?
-            .call_method1(pyo3::intern!(py, "_init_without_validation"), (data.0,))?
-            .unbind(),
+            .call_method1(pyo3::intern!(py, "_init_without_validation"), (data.0,))?,
         GeneralName::DNSName(data) => types::DNS_NAME
             .get(py)?
-            .call_method1(pyo3::intern!(py, "_init_without_validation"), (data.0,))?
-            .unbind(),
+            .call_method1(pyo3::intern!(py, "_init_without_validation"), (data.0,))?,
         GeneralName::DirectoryName(data) => {
             let py_name = parse_name(py, data.unwrap_read())?;
-            types::DIRECTORY_NAME.get(py)?.call1((py_name,))?.unbind()
+            types::DIRECTORY_NAME.get(py)?.call1((py_name,))?
         }
         GeneralName::UniformResourceIdentifier(data) => types::UNIFORM_RESOURCE_IDENTIFIER
             .get(py)?
-            .call_method1(pyo3::intern!(py, "_init_without_validation"), (data.0,))?
-            .unbind(),
+            .call_method1(pyo3::intern!(py, "_init_without_validation"), (data.0,))?,
         GeneralName::IPAddress(data) => {
             if data.len() == 4 || data.len() == 16 {
                 let addr = types::IPADDRESS_IPADDRESS.get(py)?.call1((data,))?;
-                types::IP_ADDRESS.get(py)?.call1((addr,))?.unbind()
+                types::IP_ADDRESS.get(py)?.call1((addr,))?
             } else {
                 // if it's not an IPv4 or IPv6 we assume it's an IPNetwork and
                 // verify length in this function.
@@ -285,7 +279,7 @@ pub(crate) fn parse_general_name(
         }
         GeneralName::RegisteredID(data) => {
             let oid = oid_to_py_oid(py, &data)?;
-            types::REGISTERED_ID.get(py)?.call1((oid,))?.unbind()
+            types::REGISTERED_ID.get(py)?.call1((oid,))?
         }
         _ => {
             return Err(CryptographyError::from(
@@ -299,21 +293,21 @@ pub(crate) fn parse_general_name(
 }
 
 pub(crate) fn parse_general_names<'a>(
-    py: pyo3::Python<'_>,
+    py: pyo3::Python<'a>,
     gn_seq: &asn1::SequenceOf<'a, GeneralName<'a>>,
-) -> Result<pyo3::PyObject, CryptographyError> {
+) -> CryptographyResult<pyo3::Bound<'a, pyo3::PyAny>> {
     let gns = pyo3::types::PyList::empty(py);
     for gn in gn_seq.clone() {
         let py_gn = parse_general_name(py, gn)?;
         gns.append(py_gn)?;
     }
-    Ok(gns.into_any().unbind())
+    Ok(gns.into_any())
 }
 
-fn create_ip_network(
-    py: pyo3::Python<'_>,
+fn create_ip_network<'p>(
+    py: pyo3::Python<'p>,
     data: &[u8],
-) -> Result<pyo3::PyObject, CryptographyError> {
+) -> CryptographyResult<pyo3::Bound<'p, pyo3::PyAny>> {
     let prefix = match data.len() {
         8 => {
             let num = u32::from_be_bytes(data[4..].try_into().unwrap());
@@ -337,7 +331,7 @@ fn create_ip_network(
         prefix?
     );
     let addr = types::IPADDRESS_IPNETWORK.get(py)?.call1((net,))?;
-    Ok(types::IP_ADDRESS.get(py)?.call1((addr,))?.unbind())
+    Ok(types::IP_ADDRESS.get(py)?.call1((addr,))?)
 }
 
 fn ipv4_netmask(num: u32) -> Result<u32, CryptographyError> {
@@ -360,11 +354,11 @@ fn ipv6_netmask(num: u128) -> Result<u32, CryptographyError> {
 
 pub(crate) fn parse_and_cache_extensions<
     'p,
-    F: Fn(&Extension<'_>) -> Result<Option<pyo3::Bound<'p, pyo3::PyAny>>, CryptographyError>,
+    F: Fn(&Extension<'p>) -> Result<Option<pyo3::Bound<'p, pyo3::PyAny>>, CryptographyError>,
 >(
     py: pyo3::Python<'p>,
     cached_extensions: &pyo3::sync::GILOnceCell<pyo3::PyObject>,
-    raw_extensions: &Option<RawExtensions<'_>>,
+    raw_extensions: &Option<RawExtensions<'p>>,
     parse_ext: F,
 ) -> pyo3::PyResult<pyo3::PyObject> {
     cached_extensions
