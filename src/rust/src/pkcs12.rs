@@ -520,7 +520,6 @@ fn serialize_key_and_certificates<'p>(
             if let Some(ref key) = key {
                 if !cert
                     .public_key(py)?
-                    .into_bound(py)
                     .eq(key.call_method0(pyo3::intern!(py, "public_key"))?)?
                 {
                     return Err(CryptographyError::from(
@@ -750,7 +749,7 @@ fn load_key_and_certificates<'p>(
     password: Option<CffiBuf<'_>>,
     backend: Option<pyo3::Bound<'_, pyo3::PyAny>>,
 ) -> CryptographyResult<(
-    pyo3::PyObject,
+    pyo3::Bound<'p, pyo3::PyAny>,
     Option<x509::certificate::Certificate>,
     pyo3::Bound<'p, pyo3::types::PyList>,
 )> {
@@ -761,7 +760,7 @@ fn load_key_and_certificates<'p>(
     let private_key = if let Some(pkey) = p12.pkey {
         keys::private_key_from_pkey(py, &pkey, false)?
     } else {
-        py.None()
+        py.None().into_bound(py)
     };
     let cert = if let Some(ossl_cert) = p12.cert {
         let cert_der = pyo3::types::PyBytes::new(py, &ossl_cert.to_der()?).unbind();
@@ -808,7 +807,7 @@ fn load_pkcs12<'p>(
     let private_key = if let Some(pkey) = p12.pkey {
         keys::private_key_from_pkey(py, &pkey, false)?
     } else {
-        py.None()
+        py.None().into_bound(py)
     };
     let cert = if let Some(ossl_cert) = p12.cert {
         let cert_der = pyo3::types::PyBytes::new(py, &ossl_cert.to_der()?).unbind();
