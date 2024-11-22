@@ -2,7 +2,10 @@
 // 2.0, and the BSD License. See the LICENSE file in the root of this repository
 // for complete details.
 
-use cryptography_x509::{common, crl, extensions, oid};
+use cryptography_x509::{
+    common::{self, Asn1Write},
+    crl, extensions, oid,
+};
 
 use crate::asn1::{py_oid_to_oid, py_uint_to_big_endian_bytes};
 use crate::error::{CryptographyError, CryptographyResult};
@@ -118,11 +121,11 @@ pub(crate) fn encode_distribution_points<'p>(
         };
         let reasons = if let Some(py_reasons) = py_dp.reasons {
             let reasons = certificate::encode_distribution_point_reasons(py, &py_reasons)?;
-            Some(common::Asn1ReadableOrWritable::new_write(reasons))
+            Some(reasons)
         } else {
             None
         };
-        dps.push(extensions::DistributionPoint {
+        dps.push(extensions::DistributionPoint::<Asn1Write> {
             crl_issuer,
             distribution_point,
             reasons,
@@ -272,9 +275,7 @@ fn encode_certificate_policies(
                             organization: extensions::DisplayText::Utf8String(
                                 asn1::Utf8String::new(py_notice_str),
                             ),
-                            notice_numbers: common::Asn1ReadableOrWritable::new_write(
-                                asn1::SequenceOfWriter::new(notice_numbers),
-                            ),
+                            notice_numbers: asn1::SequenceOfWriter::new(notice_numbers),
                         })
                     } else {
                         None
@@ -301,14 +302,12 @@ fn encode_certificate_policies(
                 };
                 qualifiers.push(qualifier);
             }
-            Some(common::Asn1ReadableOrWritable::new_write(
-                asn1::SequenceOfWriter::new(qualifiers),
-            ))
+            Some(asn1::SequenceOfWriter::new(qualifiers))
         } else {
             None
         };
         let py_policy_id = py_policy_info.getattr(pyo3::intern!(py, "policy_identifier"))?;
-        policy_informations.push(extensions::PolicyInformation {
+        policy_informations.push(extensions::PolicyInformation::<Asn1Write> {
             policy_identifier: py_oid_to_oid(py_policy_id)?,
             policy_qualifiers: qualifiers,
         });
@@ -331,7 +330,7 @@ fn encode_issuing_distribution_point(
     {
         let py_reasons = ext.getattr(pyo3::intern!(py, "only_some_reasons"))?;
         let reasons = certificate::encode_distribution_point_reasons(ext.py(), &py_reasons)?;
-        Some(common::Asn1ReadableOrWritable::new_write(reasons))
+        Some(reasons)
     } else {
         None
     };
@@ -360,7 +359,7 @@ fn encode_issuing_distribution_point(
         None
     };
 
-    let idp = crl::IssuingDistributionPoint {
+    let idp = crl::IssuingDistributionPoint::<Asn1Write> {
         distribution_point,
         indirect_crl: ext.getattr(pyo3::intern!(py, "indirect_crl"))?.extract()?,
         only_contains_attribute_certs: ext

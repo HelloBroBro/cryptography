@@ -6,6 +6,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
 use cryptography_x509::certificate::Certificate as RawCertificate;
+use cryptography_x509::common::Asn1Read;
 use cryptography_x509::common::{AlgorithmParameters, Asn1ReadableOrWritable};
 use cryptography_x509::extensions::{
     Admission, Admissions, AuthorityKeyIdentifier, BasicConstraints, DisplayText,
@@ -497,7 +498,7 @@ fn parse_display_text<'p>(
 
 fn parse_user_notice<'p>(
     py: pyo3::Python<'p>,
-    un: UserNotice<'_>,
+    un: UserNotice<'_, Asn1Read>,
 ) -> CryptographyResult<pyo3::Bound<'p, pyo3::PyAny>> {
     let et = match un.explicit_text {
         Some(data) => parse_display_text(py, data)?,
@@ -507,7 +508,7 @@ fn parse_user_notice<'p>(
         Some(data) => {
             let org = parse_display_text(py, data.organization)?;
             let numbers = pyo3::types::PyList::empty(py);
-            for num in data.notice_numbers.unwrap_read().clone() {
+            for num in data.notice_numbers.clone() {
                 numbers.append(big_byte_slice_to_py_int(py, num.as_bytes())?)?;
             }
             types::NOTICE_REFERENCE.get(py)?.call1((org, numbers))?
@@ -519,7 +520,7 @@ fn parse_user_notice<'p>(
 
 fn parse_policy_qualifiers<'a>(
     py: pyo3::Python<'a>,
-    policy_qualifiers: &asn1::SequenceOf<'a, PolicyQualifierInfo<'a>>,
+    policy_qualifiers: &asn1::SequenceOf<'a, PolicyQualifierInfo<'a, Asn1Read>>,
 ) -> CryptographyResult<pyo3::Bound<'a, pyo3::PyAny>> {
     let py_pq = pyo3::types::PyList::empty(py);
     for pqi in policy_qualifiers.clone() {
@@ -555,14 +556,12 @@ fn parse_cp<'p>(
     py: pyo3::Python<'p>,
     ext: &Extension<'_>,
 ) -> CryptographyResult<pyo3::Bound<'p, pyo3::PyAny>> {
-    let cp = ext.value::<asn1::SequenceOf<'_, PolicyInformation<'_>>>()?;
+    let cp = ext.value::<asn1::SequenceOf<'_, PolicyInformation<'_, Asn1Read>>>()?;
     let certificate_policies = pyo3::types::PyList::empty(py);
     for policyinfo in cp {
         let pi_oid = oid_to_py_oid(py, &policyinfo.policy_identifier)?;
         let py_pqis = match policyinfo.policy_qualifiers {
-            Some(policy_qualifiers) => {
-                parse_policy_qualifiers(py, policy_qualifiers.unwrap_read())?
-            }
+            Some(policy_qualifiers) => parse_policy_qualifiers(py, &policy_qualifiers)?,
             None => py.None().into_bound(py),
         };
         let pi = types::POLICY_INFORMATION
@@ -602,14 +601,13 @@ pub(crate) fn parse_distribution_point_name<'p>(
 
 fn parse_distribution_point<'p>(
     py: pyo3::Python<'p>,
-    dp: DistributionPoint<'p>,
+    dp: DistributionPoint<'p, Asn1Read>,
 ) -> CryptographyResult<pyo3::Bound<'p, pyo3::PyAny>> {
     let (full_name, relative_name) = match dp.distribution_point {
         Some(data) => parse_distribution_point_name(py, data)?,
         None => (py.None().into_bound(py), py.None().into_bound(py)),
     };
-    let reasons =
-        parse_distribution_point_reasons(py, dp.reasons.as_ref().map(|v| v.unwrap_read()))?;
+    let reasons = parse_distribution_point_reasons(py, dp.reasons.as_ref())?;
     let crl_issuer = match dp.crl_issuer {
         Some(aci) => x509::parse_general_names(py, aci.unwrap_read())?,
         None => py.None().into_bound(py),
@@ -623,7 +621,7 @@ pub(crate) fn parse_distribution_points<'p>(
     py: pyo3::Python<'p>,
     ext: &Extension<'_>,
 ) -> CryptographyResult<pyo3::Bound<'p, pyo3::PyAny>> {
-    let dps = ext.value::<asn1::SequenceOf<'_, DistributionPoint<'_>>>()?;
+    let dps = ext.value::<asn1::SequenceOf<'_, DistributionPoint<'_, Asn1Read>>>()?;
     let py_dps = pyo3::types::PyList::empty(py);
     for dp in dps {
         let py_dp = parse_distribution_point(py, dp)?;
@@ -695,8 +693,8 @@ pub(crate) fn parse_access_descriptions<'p>(
     ext: &Extension<'_>,
 ) -> CryptographyResult<pyo3::Bound<'p, pyo3::PyAny>> {
     let ads = pyo3::types::PyList::empty(py);
-    let parsed = ext.value::<SequenceOfAccessDescriptions<'_>>()?;
-    for access in parsed.unwrap_read().clone() {
+    let parsed = ext.value::<SequenceOfAccessDescriptions<'_, Asn1Read>>()?;
+    for access in parsed {
         let py_oid = oid_to_py_oid(py, &access.access_method)?;
         let gn = x509::parse_general_name(py, access.access_location)?;
         let ad = types::ACCESS_DESCRIPTION.get(py)?.call1((py_oid, gn))?;
