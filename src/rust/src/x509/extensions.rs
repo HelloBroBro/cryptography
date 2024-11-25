@@ -2,10 +2,7 @@
 // 2.0, and the BSD License. See the LICENSE file in the root of this repository
 // for complete details.
 
-use cryptography_x509::{
-    common::{self, Asn1Write},
-    crl, extensions, oid,
-};
+use cryptography_x509::{common::Asn1Write, crl, extensions, oid};
 
 use crate::asn1::{py_oid_to_oid, py_uint_to_big_endian_bytes};
 use crate::error::{CryptographyError, CryptographyResult};
@@ -19,7 +16,7 @@ fn encode_general_subtrees<'a>(
     ka_bytes: &'a cryptography_keepalive::KeepAlive<pyo3::pybacked::PyBackedBytes>,
     ka_str: &'a cryptography_keepalive::KeepAlive<pyo3::pybacked::PyBackedStr>,
     subtrees: &pyo3::Bound<'a, pyo3::PyAny>,
-) -> Result<Option<extensions::SequenceOfSubtrees<'a>>, CryptographyError> {
+) -> Result<Option<extensions::SequenceOfSubtrees<'a, Asn1Write>>, CryptographyError> {
     if subtrees.is_none() {
         Ok(None)
     } else {
@@ -32,9 +29,7 @@ fn encode_general_subtrees<'a>(
                 maximum: None,
             });
         }
-        Ok(Some(common::Asn1ReadableOrWritable::new_write(
-            asn1::SequenceOfWriter::new(subtree_seq),
-        )))
+        Ok(Some(asn1::SequenceOfWriter::new(subtree_seq)))
     }
 }
 
@@ -55,9 +50,7 @@ pub(crate) fn encode_authority_key_identifier<'a>(
     let authority_cert_issuer = if let Some(authority_cert_issuer) = aki.authority_cert_issuer {
         let gns =
             x509::common::encode_general_names(py, &ka_bytes, &ka_str, &authority_cert_issuer)?;
-        Some(common::Asn1ReadableOrWritable::new_write(
-            asn1::SequenceOfWriter::new(gns),
-        ))
+        Some(asn1::SequenceOfWriter::new(gns))
     } else {
         None
     };
@@ -69,7 +62,9 @@ pub(crate) fn encode_authority_key_identifier<'a>(
         } else {
             None
         };
-    Ok(asn1::write_single(&extensions::AuthorityKeyIdentifier {
+    Ok(asn1::write_single(&extensions::AuthorityKeyIdentifier::<
+        Asn1Write,
+    > {
         authority_cert_issuer,
         authority_cert_serial_number,
         key_identifier: aki.key_identifier.as_deref(),
@@ -96,16 +91,14 @@ pub(crate) fn encode_distribution_points<'p>(
 
         let crl_issuer = if let Some(py_crl_issuer) = py_dp.crl_issuer {
             let gns = x509::common::encode_general_names(py, &ka_bytes, &ka_str, &py_crl_issuer)?;
-            Some(common::Asn1ReadableOrWritable::new_write(
-                asn1::SequenceOfWriter::new(gns),
-            ))
+            Some(asn1::SequenceOfWriter::new(gns))
         } else {
             None
         };
         let distribution_point = if let Some(py_full_name) = py_dp.full_name {
             let gns = x509::common::encode_general_names(py, &ka_bytes, &ka_str, &py_full_name)?;
             Some(extensions::DistributionPointName::FullName(
-                common::Asn1ReadableOrWritable::new_write(asn1::SequenceOfWriter::new(gns)),
+                asn1::SequenceOfWriter::new(gns),
             ))
         } else if let Some(py_relative_name) = py_dp.relative_name {
             let mut name_entries = vec![];
@@ -114,7 +107,7 @@ pub(crate) fn encode_distribution_points<'p>(
                 name_entries.push(ne);
             }
             Some(extensions::DistributionPointName::NameRelativeToCRLIssuer(
-                common::Asn1ReadableOrWritable::new_write(asn1::SetOfWriter::new(name_entries)),
+                asn1::SetOfWriter::new(name_entries),
             ))
         } else {
             None
@@ -338,7 +331,7 @@ fn encode_issuing_distribution_point(
         let py_full_name = ext.getattr(pyo3::intern!(py, "full_name"))?;
         let gns = x509::common::encode_general_names(ext.py(), &ka_bytes, &ka_str, &py_full_name)?;
         Some(extensions::DistributionPointName::FullName(
-            common::Asn1ReadableOrWritable::new_write(asn1::SequenceOfWriter::new(gns)),
+            asn1::SequenceOfWriter::new(gns),
         ))
     } else if ext
         .getattr(pyo3::intern!(py, "relative_name"))?
@@ -353,7 +346,7 @@ fn encode_issuing_distribution_point(
             name_entries.push(name_entry);
         }
         Some(extensions::DistributionPointName::NameRelativeToCRLIssuer(
-            common::Asn1ReadableOrWritable::new_write(asn1::SetOfWriter::new(name_entries)),
+            asn1::SetOfWriter::new(name_entries),
         ))
     } else {
         None
@@ -460,7 +453,7 @@ fn encode_profession_info<'a>(
     ka_bytes: &'a cryptography_keepalive::KeepAlive<pyo3::pybacked::PyBackedBytes>,
     ka_str: &'a cryptography_keepalive::KeepAlive<pyo3::pybacked::PyBackedStr>,
     py_info: &pyo3::Bound<'a, pyo3::PyAny>,
-) -> CryptographyResult<extensions::ProfessionInfo<'a>> {
+) -> CryptographyResult<extensions::ProfessionInfo<'a, Asn1Write>> {
     let py_naming_authority = py_info.getattr(pyo3::intern!(py, "naming_authority"))?;
     let naming_authority = if !py_naming_authority.is_none() {
         Some(encode_naming_authority(py, ka_str, &py_naming_authority)?)
@@ -475,8 +468,7 @@ fn encode_profession_info<'a>(
         let item = extensions::DisplayText::Utf8String(asn1::Utf8String::new(py_item_str));
         profession_items.push(item);
     }
-    let profession_items =
-        common::Asn1ReadableOrWritable::new_write(asn1::SequenceOfWriter::new(profession_items));
+    let profession_items = asn1::SequenceOfWriter::new(profession_items);
     let py_oids = py_info.getattr(pyo3::intern!(py, "profession_oids"))?;
     let profession_oids = if !py_oids.is_none() {
         let mut profession_oids = vec![];
@@ -485,9 +477,7 @@ fn encode_profession_info<'a>(
             let oid = py_oid_to_oid(py_oid)?;
             profession_oids.push(oid);
         }
-        Some(common::Asn1ReadableOrWritable::new_write(
-            asn1::SequenceOfWriter::new(profession_oids),
-        ))
+        Some(asn1::SequenceOfWriter::new(profession_oids))
     } else {
         None
     };
@@ -528,7 +518,7 @@ fn encode_admission<'a>(
     ka_bytes: &'a cryptography_keepalive::KeepAlive<pyo3::pybacked::PyBackedBytes>,
     ka_str: &'a cryptography_keepalive::KeepAlive<pyo3::pybacked::PyBackedStr>,
     py_admission: &pyo3::Bound<'a, pyo3::PyAny>,
-) -> CryptographyResult<extensions::Admission<'a>> {
+) -> CryptographyResult<extensions::Admission<'a, Asn1Write>> {
     let py_admission_authority = py_admission.getattr(pyo3::intern!(py, "admission_authority"))?;
     let admission_authority = if !py_admission_authority.is_none() {
         Some(x509::common::encode_general_name(
@@ -552,8 +542,7 @@ fn encode_admission<'a>(
     for py_info in py_profession_infos.try_iter()? {
         profession_infos.push(encode_profession_info(py, ka_bytes, ka_str, &py_info?)?);
     }
-    let profession_infos =
-        common::Asn1ReadableOrWritable::new_write(asn1::SequenceOfWriter::new(profession_infos));
+    let profession_infos = asn1::SequenceOfWriter::new(profession_infos);
     Ok(extensions::Admission {
         admission_authority,
         naming_authority,
@@ -610,7 +599,7 @@ pub(crate) fn encode_extension(
 
             let permitted = ext.getattr(pyo3::intern!(py, "permitted_subtrees"))?;
             let excluded = ext.getattr(pyo3::intern!(py, "excluded_subtrees"))?;
-            let nc = extensions::NameConstraints {
+            let nc = extensions::NameConstraints::<Asn1Write> {
                 permitted_subtrees: encode_general_subtrees(
                     ext.py(),
                     &ka_bytes,
@@ -730,10 +719,9 @@ pub(crate) fn encode_extension(
                 admissions.push(admission);
             }
 
-            let contents_of_admissions =
-                common::Asn1ReadableOrWritable::new_write(asn1::SequenceOfWriter::new(admissions));
+            let contents_of_admissions = asn1::SequenceOfWriter::new(admissions);
 
-            let admission = extensions::Admissions {
+            let admission = extensions::Admissions::<Asn1Write> {
                 admission_authority,
                 contents_of_admissions,
             };
