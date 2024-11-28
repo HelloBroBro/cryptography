@@ -1,18 +1,24 @@
 Changelog
 =========
 
-.. _v44-0-0:
+.. _v45-0-0:
 
-44.0.0 - `main`_
+45.0.0 - `main`_
 ~~~~~~~~~~~~~~~~
 
 .. note:: This version is not yet released and is under active development.
 
 
+.. _v44-0-0:
+
+44.0.0 - 2024-11-27
+~~~~~~~~~~~~~~~~~~~
+
 * **BACKWARDS INCOMPATIBLE:** Dropped support for LibreSSL < 3.9.
 * Deprecated Python 3.7 support. Python 3.7 is no longer supported by the
   Python core team. Support for Python 3.7 will be removed in a future
   ``cryptography`` release.
+* Updated Windows, macOS, and Linux wheels to be compiled with OpenSSL 3.4.0.
 * macOS wheels are now built against the macOS 10.13 SDK. Users on older
   versions of macOS should upgrade, or they will need to build
   ``cryptography`` themselves.
@@ -27,7 +33,7 @@ Changelog
   when using OpenSSL 3.2.0+.
 * Added support for the :class:`~cryptography.x509.Admissions` certificate extension.
 * Added basic support for PKCS7 decryption (including S/MIME 3.2) via
-  :func:`~cryptography.hazmat.primitives.serialization.pkcs7.pkcs7_decrypt_der`, 
+  :func:`~cryptography.hazmat.primitives.serialization.pkcs7.pkcs7_decrypt_der`,
   :func:`~cryptography.hazmat.primitives.serialization.pkcs7.pkcs7_decrypt_pem`, and
   :func:`~cryptography.hazmat.primitives.serialization.pkcs7.pkcs7_decrypt_smime`.
 
